@@ -541,8 +541,24 @@ async function toggleCompleted(paper) {
             </>
           ) : (
             <>
-              <button onClick={() => openPreview(paper, "topic-test")} className="rounded-xl bg-cyan-400 px-4 py-2 font-black text-slate-950">Preview Topic Test</button>
-              <a href={paper.pdf} download className="rounded-xl bg-white px-4 py-2 font-black text-slate-950">Download</a>
+              <button
+              onClick={() => {
+                if (!requireLogin()) return;
+                openPreview(paper, "topic-test");
+              }}
+              className="rounded-xl bg-cyan-400 px-4 py-2 font-black text-slate-950"
+            >
+              Preview Topic Test
+            </button>
+            <button
+              onClick={() => {
+                if (!requireLogin()) return;
+                window.open(paper.pdf, "_blank");
+              }}
+              className="rounded-xl bg-white px-4 py-2 font-black text-slate-950"
+            >
+              Download
+            </button>
             </>
           )}
         </div>
@@ -660,6 +676,9 @@ async function toggleCompleted(paper) {
 
   return (
     <div className="min-h-screen bg-slate-950 text-white">
+      <div className="pointer-events-none fixed bottom-5 right-5 z-[99999] select-none rounded-xl bg-slate-950/40 px-3 py-1 text-sm font-black text-white/25">
+  ALevelDojo by Ahmed Shantour
+</div>
       <header className="border-b border-white/10 bg-slate-950/90 px-6 py-5 backdrop-blur sm:px-10 lg:px-16">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4">
           <button onClick={() => setPage("home")} className="flex items-center gap-3 text-left">
