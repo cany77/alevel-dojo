@@ -303,7 +303,14 @@ async function signOut() {
     setSelectedUnit("All units");
     setCompletionFilter("All papers");
   }
+  function requireLogin() {
+    if (!user) {
+      setShowAuthModal(true);
+      return false;
+    }
 
+    return true;
+  }
   function openPreview(paper, previewType) {
     const id = paperId(paper);
     setActivePreview({ id, paper, previewType });
@@ -503,9 +510,33 @@ async function toggleCompleted(paper) {
         <div className="mt-4 flex flex-wrap gap-3">
           {paper.type === "Past Paper" ? (
             <>
-              <button onClick={() => openPreview(paper, "side-by-side")} className="rounded-xl bg-cyan-400 px-4 py-2 font-black text-slate-950">Preview Q + MS</button>
-              <a href={paper.questionPaper} download className="rounded-xl bg-white px-4 py-2 font-black text-slate-950">Download Q</a>
-              {paper.markScheme && <a href={paper.markScheme} download className="rounded-xl bg-white px-4 py-2 font-black text-slate-950">Download MS</a>}
+              <button
+                onClick={() => {
+                  if (!requireLogin()) return;
+                  openPreview(paper, "side-by-side");
+                }}
+                className="rounded-xl bg-cyan-400 px-4 py-2 font-black text-slate-950"
+              >
+                Preview Q + MS
+              </button>
+              <button
+                onClick={() => {
+                  if (!requireLogin()) return;
+                  window.open(paper.questionPaper, "_blank");
+                }}
+                className="rounded-xl bg-white px-4 py-2 font-black text-slate-950"
+              >
+                Download Q
+              </button>
+              {paper.markScheme && <button
+                  onClick={() => {
+                    if (!requireLogin()) return;
+                    window.open(paper.markScheme, "_blank");
+                  }}
+                  className="rounded-xl bg-white px-4 py-2 font-black text-slate-950"
+                >
+                  Download MS
+                </button>}
 
             </>
           ) : (
