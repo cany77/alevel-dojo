@@ -524,7 +524,7 @@ async function toggleCompleted(paper) {
   if (page === "home") {
     return (
       <div className="min-h-screen bg-slate-950 text-white">
-        <div className="fixed bottom-5 right-5 z-[99999] rounded-xl bg-red-500 px-4 py-2 text-sm font-black text-white">
+        <div className="pointer-events-none fixed bottom-5 right-5 z-[99999] select-none rounded-xl bg-slate-950/40 px-3 py-1 text-sm font-black text-white/25">
           ALevelDojo by Ahmed Shantour
         </div>
         <section className="relative overflow-hidden px-6 py-10 sm:px-10 lg:px-16">
