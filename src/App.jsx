@@ -524,6 +524,9 @@ async function toggleCompleted(paper) {
   if (page === "home") {
     return (
       <div className="min-h-screen bg-slate-950 text-white">
+        <div className="fixed bottom-5 right-5 z-[99999] rounded-xl bg-red-500 px-4 py-2 text-sm font-black text-white">
+          ALevelDojo by Ahmed Shantour
+        </div>
         <section className="relative overflow-hidden px-6 py-10 sm:px-10 lg:px-16">
           <div className="absolute inset-0 opacity-30 bg-[radial-gradient(circle_at_top_left,_#38bdf8,_transparent_35%),radial-gradient(circle_at_top_right,_#a78bfa,_transparent_35%)]" />
           <div className="relative mx-auto max-w-7xl">
