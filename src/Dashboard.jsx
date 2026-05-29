@@ -1,7 +1,8 @@
 import { papers } from "./papersData";
+import { supabase } from "./supabaseClient";
 import PdfViewer from "./PdfViewer";
 import Watermark from "./Watermark";
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   BookOpen,
   Brain,
@@ -1089,13 +1090,35 @@ function SubjectPagePreview({ subject, onBack }) {
   );
 }
 
-export default function Dashboard() {
+export default function Dashboard({ user, onRequireLogin = () => {} }) {
   const [selectedIds, setSelectedIds] = useState(["physics", "computer-science", "maths"]);
   const [modalOpen, setModalOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [activeSubjectId, setActiveSubjectId] = useState(null);
 
   const subjects = allSubjects();
+  useEffect(() => {
+  async function loadUserSubjects() {
+    if (!user) {
+      setSelectedIds([]);
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("user_subjects")
+      .select("subject_id")
+      .eq("user_id", user.id);
+
+    if (error) {
+      console.error(error);
+      return;
+    }
+
+    setSelectedIds(data.map((item) => item.subject_id));
+  }
+
+  loadUserSubjects();
+}, [user]);
   const selectedSubjects = subjects.filter((subject) => selectedIds.includes(subject.id));
   const activeSubject = subjects.find((subject) => subject.id === activeSubjectId);
 
@@ -1106,11 +1129,48 @@ export default function Dashboard() {
     );
   }, [search, selectedSubjects, subjects]);
 
-  function toggleSubject(id) {
-    setSelectedIds((current) =>
-      current.includes(id) ? current.filter((item) => item !== id) : [...current, id]
-    );
+async function toggleSubject(id) {
+  if (!user) {
+    onRequireLogin();
+    return;
   }
+
+  const subject = subjects.find((item) => item.id === id);
+  if (!subject) return;
+
+  const alreadySelected = selectedIds.includes(id);
+
+  if (alreadySelected) {
+    const { error } = await supabase
+      .from("user_subjects")
+      .delete()
+      .eq("user_id", user.id)
+      .eq("subject_id", id);
+
+    if (error) {
+      console.error(error);
+      alert(error.message);
+      return;
+    }
+
+    setSelectedIds((current) => current.filter((item) => item !== id));
+  } else {
+    const { error } = await supabase.from("user_subjects").insert({
+      user_id: user.id,
+      subject_id: subject.id,
+      subject_name: subject.name,
+      board: subject.board,
+    });
+
+    if (error) {
+      console.error(error);
+      alert(error.message);
+      return;
+    }
+
+    setSelectedIds((current) => [...current, id]);
+  }
+}
 
  return (
   <div className="min-h-screen bg-[#060816] text-white">

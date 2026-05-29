@@ -211,9 +211,7 @@ function AuthPreview() {
           Password
         </div>
 
-        <button className="w-full rounded-2xl bg-[#ff554f] py-4 font-black text-white shadow-lg shadow-red-500/20">
-          Sign in
-        </button>
+        
       </div>
 
       <div className="my-4 text-center text-xs text-white/35">or</div>
@@ -401,7 +399,13 @@ function FeatureBand({ theme, icon: Icon, label, title, text, button, reverse })
   );
 }
 
-export default function HomePage({ onBrowsePapers = () => {}, onOpenAuth = () => {}, user = null }) {
+export default function HomePage({
+  onBrowsePapers = () => {},
+  onOpenAuth = () => {},
+  onLogout = () => {},
+  user = null,
+}) {
+    const isLoggedIn = Boolean(user);
   return (
   <div className="min-h-screen bg-[#060816] text-white">
     <Watermark />
@@ -418,9 +422,40 @@ export default function HomePage({ onBrowsePapers = () => {}, onOpenAuth = () =>
             <a className="hover:text-white">Dashboard</a>
           </nav>
           <div className="hidden items-center gap-3 md:flex">
-            <button onClick={onOpenAuth} className="rounded-2xl border border-white/15 px-5 py-3 text-sm font-bold text-white/75 hover:bg-white/5">Sign in</button>
-            <button onClick={onOpenAuth} className="rounded-2xl bg-gradient-to-r from-rose-400 to-violet-500 px-5 py-3 text-sm font-black text-white shadow-lg shadow-violet-500/20">Create account</button>
-          </div>
+            {isLoggedIn ? (
+                <>
+                <button
+                    onClick={onBrowsePapers}
+                    className="rounded-2xl bg-gradient-to-r from-rose-400 to-violet-500 px-5 py-3 text-sm font-black text-white shadow-lg shadow-violet-500/20"
+                >
+                    Open dashboard
+                </button>
+
+                <button
+                    onClick={onLogout}
+                    className="rounded-2xl border border-white/15 px-5 py-3 text-sm font-bold text-white/75 hover:bg-white/5"
+                >
+                    Log out
+                </button>
+                </>
+            ) : (
+                <>
+                <button
+                    onClick={onOpenAuth}
+                    className="rounded-2xl border border-white/15 px-5 py-3 text-sm font-bold text-white/75 hover:bg-white/5"
+                >
+                    Sign in
+                </button>
+
+                <button
+                    onClick={onOpenAuth}
+                    className="rounded-2xl bg-gradient-to-r from-rose-400 to-violet-500 px-5 py-3 text-sm font-black text-white shadow-lg shadow-violet-500/20"
+                >
+                    Create account
+                </button>
+                </>
+            )}
+            </div>
           <button className="rounded-2xl border border-white/10 p-3 md:hidden">
             <Menu size={20} />
           </button>
@@ -449,9 +484,12 @@ export default function HomePage({ onBrowsePapers = () => {}, onOpenAuth = () =>
               <button onClick={onBrowsePapers} className="rounded-2xl bg-gradient-to-r from-rose-400 to-violet-500 px-8 py-4 text-lg font-black text-white shadow-2xl shadow-rose-500/20">
                 Browse papers
               </button>
-              <button onClick={onOpenAuth} className="rounded-2xl border border-white/20 px-8 py-4 text-lg font-black text-white/85 hover:bg-white/5">
-                Create free account
-              </button>
+              <button
+                onClick={isLoggedIn ? onBrowsePapers : onOpenAuth}
+                className="rounded-2xl border border-white/20 px-8 py-4 text-lg font-black text-white/85 hover:bg-white/5"
+                >
+                {isLoggedIn ? "Open dashboard" : "Create free account"}
+                </button>
             </div>
 
             <div className="mt-12 grid max-w-xl grid-cols-4 gap-5">
@@ -560,7 +598,30 @@ export default function HomePage({ onBrowsePapers = () => {}, onOpenAuth = () =>
                 If a student tries to preview, download, edit, or save without logging in, they will see a polished sign-in-required popup. After login, the dashboard unlocks their chosen subjects.
               </p>
             </div>
-            <AuthPreview />
+            {isLoggedIn ? (
+  <div className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-8">
+    <div className="mb-5 inline-flex rounded-2xl bg-emerald-400/15 p-4 text-emerald-200">
+      <CheckCircle2 size={28} />
+    </div>
+
+    <h3 className="text-3xl font-black text-white">
+      You are signed in.
+    </h3>
+
+    <p className="mt-4 leading-8 text-white/55">
+      Your dashboard, selected subjects, saved papers, and revision tools are ready.
+    </p>
+
+    <button
+      onClick={onBrowsePapers}
+      className="mt-6 rounded-2xl bg-gradient-to-r from-rose-400 to-violet-500 px-6 py-4 font-black text-white shadow-xl shadow-violet-500/20"
+    >
+      Open dashboard
+    </button>
+  </div>
+) : (
+  <AuthPreview />
+)}
           </div>
         </section>
 

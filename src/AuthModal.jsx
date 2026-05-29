@@ -43,7 +43,7 @@ useEffect(() => {
     event.preventDefault();
 
     if (isSignUp) {
-      signUp();
+      signUp(name);
     } else {
       signIn();
     }

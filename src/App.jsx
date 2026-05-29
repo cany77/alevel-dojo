@@ -157,55 +157,108 @@ export default function ALevelDojo() {
     writeStorage("alevel-dojo-completed-papers", ids);
   }
 }
+async function logOut() {
+  await supabase.auth.signOut();
 
-  useEffect(() => {
-  supabase.auth.getSession().then(({ data }) => {
-    setUser(data.session?.user ?? null);
-  });
+  setUser(null);
+  setShowAuthModal(false);
+  setShowLockedModal(false);
+}
+ useEffect(() => {
+  async function getSession() {
+    const { data } = await supabase.auth.getSession();
+    const currentUser = data.session?.user ?? null;
+
+    setUser(currentUser);
+
+    if (currentUser) {
+      loadCompletedPapers(currentUser.id);
+    }
+  }
+
+  getSession();
 
   const {
     data: { subscription },
   } = supabase.auth.onAuthStateChange((_event, session) => {
-    setUser(session?.user ?? null);
+    const currentUser = session?.user ?? null;
 
-    if (session?.user) {
-      loadCompletedPapers(session.user.id);
+    setUser(currentUser);
+
+    if (currentUser) {
+      loadCompletedPapers(currentUser.id);
     }
   });
 
-  return () => subscription.unsubscribe();
+  return () => {
+    subscription.unsubscribe();
+  };
 }, []);
-async function signUp() {
-  const { error } = await supabase.auth.signUp({
-    email,
-    password,
-  });
 
-  if (error) {
-    alert(error.message);
-  } else {
+
+  async function signUp(name = "") {
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: {
+          full_name: name,
+        },
+      },
+    });
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    if (data.user) {
+      await supabase.from("profiles").upsert({
+        id: data.user.id,
+        email: data.user.email,
+        full_name: name,
+      });
+
+      setUser(data.user);
+    }
+
     setShowAuthModal(false);
     setPage("home");
     setEmail("");
     setPassword("");
     alert("Account created");
   }
-}
 
 async function signIn() {
-  const { error } = await supabase.auth.signInWithPassword({
+  const { data, error } = await supabase.auth.signInWithPassword({
     email,
     password,
   });
 
   if (error) {
     alert(error.message);
-  } else {
-    setShowAuthModal(false);
-    setPage("home");
-    setEmail("");
-    setPassword("");
+    return;
   }
+
+  const signedInUser = data.user;
+
+  setUser(signedInUser);
+
+  await supabase.from("profiles").upsert({
+    id: signedInUser.id,
+    email: signedInUser.email,
+    last_login_at: new Date().toISOString(),
+  });
+
+  await supabase.from("login_events").insert({
+    user_id: signedInUser.id,
+    email: signedInUser.email,
+  });
+
+  setShowAuthModal(false);
+  setShowLockedModal(false);
+  setEmail("");
+  setPassword("");
 }
 
 async function signOut() {
@@ -690,7 +743,7 @@ function DashboardOverview() {
               className={`rounded-[2rem] border p-5 shadow-xl transition hover:-translate-y-1 ${style.card}`}
             >
               <div className="mb-5 flex items-start justify-between gap-3">
-                <div>
+                <div> 
                   <h4 className="text-2xl font-black text-white">
                     {subject.name}
                   </h4>
@@ -869,16 +922,15 @@ if (page === "home") {
   
   return (
     <>
-      <HomePage
-        user={user}
-        onBrowsePapers={() => {
-          setPage("library");
-          setDashboardView("overview");
-          window.scrollTo(0, 0);
-        }}
-        onOpenAuth={() => setShowAuthModal(true)}
-      />
-
+    <HomePage
+      user={user}
+      onOpenAuth={() => setShowAuthModal(true)}
+      onLogout={logOut}
+      onBrowsePapers={() => {
+        setPage("library");
+        window.scrollTo(0, 0);
+      }}
+    />
       <AuthModal
         showAuthModal={showAuthModal}
         setShowAuthModal={setShowAuthModal}
@@ -901,7 +953,12 @@ function startFloatingMock() {
   setShowFloatingMock(true);
 }
 if (page === "library") {
-  return <Dashboard />;
+  return (
+    <Dashboard
+      user={user}
+      onRequireLogin={() => setShowLockedModal(true)}
+    />
+  );
 }
   return (
     <div className="min-h-screen bg-slate-950 text-white">
