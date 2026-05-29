@@ -4,9 +4,6 @@ import MockTimer from "./MockTimer";
 import { supabase } from "./supabaseClient";
 import AuthModal from "./AuthModal";
 import PdfViewer from "./PdfViewer";
-import HomePage from "./HomePage";
-import LockedActionModal from "./LockedActionModal";
-import Dashboard from "./Dashboard";
 
 const subjects = [
   {
@@ -141,7 +138,6 @@ export default function ALevelDojo() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showAuthModal, setShowAuthModal] = useState(false);
-  const [showLockedModal, setShowLockedModal] = useState(false);
   const [showFloatingMock, setShowFloatingMock] = useState(false);
   async function loadCompletedPapers(userId) {
   const { data, error } = await supabase
@@ -211,20 +207,9 @@ async function signIn() {
 async function signOut() {
   await supabase.auth.signOut();
 }
-const [page, setPage] = useState("home");
-const [dashboardView, setDashboardView] = useState("overview");
-
-const [studentSubjectIds, setStudentSubjectIds] = useState(() =>
-  readStorage("alevel-dojo-student-subjects", [])
-);
-
-const [editingSubjects, setEditingSubjects] = useState(() => {
-  const savedSubjects = readStorage("alevel-dojo-student-subjects", []);
-  return savedSubjects.length === 0;
-});
-
-const [selectedBoard, setSelectedBoard] = useState("All boards");
-const [selectedSubject, setSelectedSubject] = useState(subjects[0]);
+  const [page, setPage] = useState("home");
+  const [selectedBoard, setSelectedBoard] = useState("All boards");
+  const [selectedSubject, setSelectedSubject] = useState(subjects[0]);
   const [selectedTopic, setSelectedTopic] = useState(subjects[0].topics[0]);
   const [activeTab, setActiveTab] = useState("Papers");
   const [globalSearch, setGlobalSearch] = useState("");
@@ -304,26 +289,14 @@ const [selectedSubject, setSelectedSubject] = useState(subjects[0]);
   const currentProgress = progress[progressKey] || 0;
   const favouriteIds = new Set(favourites.map((item) => item.id));
 
-function chooseSubject(subject) {
-  setSelectedSubject(subject);
-  setSelectedTopic(subject.topics[0]);
-  setActiveTab("Papers");
-  setPage("library");
-  setDashboardView("subject");
-  clearFilters();
-  closePreview();
-}
-
-function toggleStudentSubject(subjectId) {
-  const alreadySelected = studentSubjectIds.includes(subjectId);
-
-  const nextSubjects = alreadySelected
-    ? studentSubjectIds.filter((id) => id !== subjectId)
-    : [...studentSubjectIds, subjectId];
-
-  setStudentSubjectIds(nextSubjects);
-  writeStorage("alevel-dojo-student-subjects", nextSubjects);
-}
+  function chooseSubject(subject) {
+    setSelectedSubject(subject);
+    setSelectedTopic(subject.topics[0]);
+    setActiveTab("Papers");
+    setPage("library");
+    clearFilters();
+    closePreview();
+  }
 
   function clearFilters() {
     setGlobalSearch("");
@@ -336,8 +309,8 @@ function toggleStudentSubject(subjectId) {
   }
   function requireLogin() {
     if (!user) {
-      setShowLockedModal(true);
-      return;
+      setShowAuthModal(true);
+      return false;
     }
 
     return true;
@@ -571,208 +544,7 @@ async function toggleCompleted(paper) {
       </div>
     );
   }
-function getBoardCardStyle(board) {
-  if (board === "OxfordAQA") {
-    return {
-      card: "border-rose-400/30 bg-gradient-to-br from-rose-500/25 via-rose-500/10 to-white/[0.03]",
-      badge: "bg-rose-400/15 text-rose-200",
-      button: "bg-rose-400 text-white hover:bg-rose-300",
-    };
-  }
 
-  if (board === "Cambridge") {
-    return {
-      card: "border-cyan-300/30 bg-gradient-to-br from-cyan-400/25 via-cyan-400/10 to-white/[0.03]",
-      badge: "bg-cyan-400/15 text-cyan-200",
-      button: "bg-cyan-300 text-slate-950 hover:bg-cyan-200",
-    };
-  }
-
-  if (board === "Edexcel") {
-    return {
-      card: "border-violet-300/30 bg-gradient-to-br from-violet-400/25 via-violet-400/10 to-white/[0.03]",
-      badge: "bg-violet-400/15 text-violet-200",
-      button: "bg-violet-400 text-white hover:bg-violet-300",
-    };
-  }
-
-  return {
-    card: "border-white/10 bg-white/[0.04]",
-    badge: "bg-white/10 text-white/70",
-    button: "bg-white text-slate-950",
-  };
-}
-
-function DashboardOverview() {
-  const selectedSubjects = subjects.filter((subject) =>
-    studentSubjectIds.includes(subject.id)
-  );
-
-  const subjectsToShow =
-    editingSubjects || selectedSubjects.length === 0
-      ? filteredSubjects
-      : selectedSubjects;
-
-  return (
-    <div>
-      <div className="mb-8 overflow-hidden rounded-[2rem] border border-white/10 bg-slate-900 p-6">
-        <div className="flex flex-wrap items-start justify-between gap-5">
-          <div>
-            <p className="mb-3 text-sm font-black uppercase tracking-[0.25em] text-rose-200">
-              Dashboard
-            </p>
-
-            <h2 className="max-w-3xl text-4xl font-black tracking-tight text-white md:text-5xl">
-              Choose the subjects you are actually taking.
-            </h2>
-
-            <p className="mt-4 max-w-2xl text-slate-400">
-              Pick your A-Level subjects from OxfordAQA, Cambridge, and Edexcel.
-              Your dashboard will then show the papers, notes, syllabus, flashcards,
-              and AI tools for only those subjects.
-            </p>
-          </div>
-
-          <button
-            onClick={() => setEditingSubjects(!editingSubjects)}
-            className="rounded-2xl border border-white/15 bg-white/10 px-5 py-3 font-black text-white hover:bg-white/15"
-          >
-            {editingSubjects ? "Done" : "Change subjects"}
-          </button>
-        </div>
-
-        <div className="mt-6 grid gap-4 sm:grid-cols-3">
-          <div className="rounded-2xl bg-white/[0.05] p-4">
-            <p className="text-3xl font-black text-rose-300">
-              {studentSubjectIds.length}
-            </p>
-            <p className="text-sm text-slate-400">Chosen subjects</p>
-          </div>
-
-          <div className="rounded-2xl bg-white/[0.05] p-4">
-            <p className="text-3xl font-black text-cyan-300">
-              {papers.length}
-            </p>
-            <p className="text-sm text-slate-400">Files loaded</p>
-          </div>
-
-          <div className="rounded-2xl bg-white/[0.05] p-4">
-            <p className="text-3xl font-black text-violet-300">
-              {completedPapers.length}
-            </p>
-            <p className="text-sm text-slate-400">Completed papers</p>
-          </div>
-        </div>
-      </div>
-
-      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h3 className="text-2xl font-black text-white">
-            {editingSubjects || selectedSubjects.length === 0
-              ? "Select your subjects"
-              : "My subjects"}
-          </h3>
-
-          <p className="mt-1 text-sm text-slate-400">
-            Open a subject to view its papers, topic tests, notes, progress, and AI tutor.
-          </p>
-        </div>
-      </div>
-
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {subjectsToShow.map((subject) => {
-          const style = getBoardCardStyle(subject.board);
-          const isSelected = studentSubjectIds.includes(subject.id);
-
-          return (
-            <div
-              key={subject.id}
-              className={`rounded-[2rem] border p-5 shadow-xl transition hover:-translate-y-1 ${style.card}`}
-            >
-              <div className="mb-5 flex items-start justify-between gap-3">
-                <div>
-                  <h4 className="text-2xl font-black text-white">
-                    {subject.name}
-                  </h4>
-
-                  <p className="mt-2 line-clamp-2 text-sm leading-6 text-slate-300">
-                    {subject.description}
-                  </p>
-                </div>
-
-                <span className={`rounded-full px-3 py-1 text-xs font-black ${style.badge}`}>
-                  {subject.board}
-                </span>
-              </div>
-
-              <div className="mb-5 flex flex-wrap gap-2">
-                {subject.topics.slice(0, 3).map((topic) => (
-                  <span
-                    key={topic}
-                    className="rounded-full bg-white/10 px-3 py-1 text-xs font-bold text-white/60"
-                  >
-                    {topic}
-                  </span>
-                ))}
-              </div>
-
-              <div className="flex flex-wrap gap-2">
-                <button
-                  onClick={() => chooseSubject(subject)}
-                  className={`rounded-xl px-4 py-2 text-sm font-black ${style.button}`}
-                >
-                  Open
-                </button>
-
-                <button
-                  onClick={() => toggleStudentSubject(subject.id)}
-                  className={`rounded-xl px-4 py-2 text-sm font-black ${
-                    isSelected
-                      ? "bg-white text-slate-950"
-                      : "bg-white/10 text-white hover:bg-white/15"
-                  }`}
-                >
-                  {isSelected ? "✓ Added" : "+ Add subject"}
-                </button>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {!editingSubjects && selectedSubjects.length > 0 && (
-        <div className="mt-8 rounded-[2rem] border border-white/10 bg-white/[0.04] p-6">
-          <p className="text-sm font-black uppercase tracking-[0.25em] text-cyan-200">
-            Recommended next
-          </p>
-
-          <div className="mt-5 grid gap-4 md:grid-cols-3">
-            <div className="rounded-2xl bg-slate-950 p-5">
-              <p className="text-xl font-black text-white">Continue a paper</p>
-              <p className="mt-2 text-sm text-slate-400">
-                Open your latest past paper and continue revision.
-              </p>
-            </div>
-
-            <div className="rounded-2xl bg-slate-950 p-5">
-              <p className="text-xl font-black text-white">Review weak topics</p>
-              <p className="mt-2 text-sm text-slate-400">
-                Use topic tests and notes to target unfinished syllabus areas.
-              </p>
-            </div>
-
-            <div className="rounded-2xl bg-slate-950 p-5">
-              <p className="text-xl font-black text-white">Ask AI tutor</p>
-              <p className="mt-2 text-sm text-slate-400">
-                Combine multiple topics and get quizzed step by step.
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
   function PaperCard({ paper }) {
     const id = paperId(paper);
     const isFavourite = favouriteIds.has(id);
@@ -865,47 +637,99 @@ function DashboardOverview() {
     );
   }
 
-if (page === "home") {
-  
-  return (
-    <>
-      <HomePage
-        user={user}
-        onBrowsePapers={() => {
-          setPage("library");
-          setDashboardView("overview");
-          window.scrollTo(0, 0);
-        }}
-        onOpenAuth={() => setShowAuthModal(true)}
-      />
+  if (page === "home") {
+    return (
+      <div className="min-h-screen bg-slate-950 text-white">
+        <div className="pointer-events-none fixed bottom-5 right-5 z-[99999] select-none rounded-xl bg-slate-950/40 px-3 py-1 text-sm font-black text-white/25">
+          ALevelDojo by Ahmed Shantour
+        </div>
+        <section className="relative overflow-hidden px-6 py-10 sm:px-10 lg:px-16">
+          <div className="absolute inset-0 opacity-30 bg-[radial-gradient(circle_at_top_left,_#38bdf8,_transparent_35%),radial-gradient(circle_at_top_right,_#a78bfa,_transparent_35%)]" />
+          <div className="relative mx-auto max-w-7xl">
+            <nav className="mb-14 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-cyan-400 text-xl text-slate-950 shadow-lg">🎓</div>
+                <div>
+                  <h1 className="text-xl font-black tracking-tight">A-Level Dojo</h1>
+                  <p className="text-xs text-slate-300">Fast papers, notes, AI, mocks, and progress</p>
+                </div>
+              </div>
+  <div className="flex gap-3">
+  {!user ? (
+    <button
+      onClick={() => setShowAuthModal(true)}
+      className="rounded-full bg-white px-5 py-2.5 text-sm font-semibold text-slate-950 shadow-lg transition hover:scale-105"
+    >
+      Login
+    </button>
+  ) : (
+    <button
+      onClick={signOut}
+      className="rounded-full bg-red-500 px-5 py-2.5 text-sm font-semibold text-white shadow-lg transition hover:scale-105"
+    >
+      Logout
+    </button>
+  )}
 
-      <AuthModal
-        showAuthModal={showAuthModal}
-        setShowAuthModal={setShowAuthModal}
-        email={email}
-        setEmail={setEmail}
-        password={password}
-        setPassword={setPassword}
-        signIn={signIn}
-        signUp={signUp}
-      />
-            <LockedActionModal
-        showLockedModal={showLockedModal}
-        setShowLockedModal={setShowLockedModal}
-        setShowAuthModal={setShowAuthModal}
-      />
-    </>
-  );
-}
-function startFloatingMock() {
-  setShowFloatingMock(true);
-}
-if (page === "library") {
-  return <Dashboard />;
-}
-  return (
-    <div className="min-h-screen bg-slate-950 text-white">
-      <AuthModal
+  <button
+    onClick={() => setPage("library")}
+    className="rounded-full bg-cyan-400 px-5 py-2.5 text-sm font-semibold text-slate-950 shadow-lg transition hover:scale-105"
+  >
+    Open library
+  </button>
+</div>
+            </nav>
+
+            <div className="grid gap-10 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
+              <div>
+                <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 py-2 text-sm text-slate-200 backdrop-blur">
+                  ✨ Your A-Level paper platform
+                </div>
+                <h2 className="max-w-3xl text-4xl font-black tracking-tight sm:text-6xl">
+                  Search papers. Preview mark schemes. Run timed mocks.
+                </h2>
+                <p className="mt-6 max-w-2xl text-lg leading-8 text-slate-300">
+                  A premium A-Level revision dashboard for OxfordAQA, Cambridge, and Edexcel — with past papers, topic tests, notes, bookmarks, completion tracking, and AI revision tools.
+                </p>
+                <div className="mt-8 flex flex-wrap gap-3">
+                  <button onClick={() => setPage("library")} className="rounded-2xl bg-cyan-400 px-6 py-3 font-bold text-slate-950 shadow-xl transition hover:scale-105">
+                    Start revising
+                  </button>
+                  <button onClick={() => { setPage("library"); setActiveTab("AI Tutor"); }} className="rounded-2xl border border-white/15 bg-white/10 px-6 py-3 font-bold text-white backdrop-blur transition hover:bg-white/20">
+                    Open AI tutor
+                  </button>
+                </div>
+              </div>
+
+              <div className="rounded-[2rem] border border-white/10 bg-white/10 p-5 shadow-2xl backdrop-blur">
+                <div className="rounded-[1.5rem] bg-slate-900/90 p-5">
+                  <p className="text-sm text-slate-400">Platform overview</p>
+                  <h3 className="mt-1 text-2xl font-black">Revision dashboard</h3>
+                  <div className="mt-5 grid grid-cols-2 gap-3">
+                    <div className="rounded-2xl bg-white/5 p-4"><p className="text-2xl font-black">{papers.length}</p><p className="text-xs text-slate-400">Files loaded</p></div>
+                    <div className="rounded-2xl bg-white/5 p-4"><p className="text-2xl font-black">{subjects.length}</p><p className="text-xs text-slate-400">Subjects</p></div>
+                    <div className="rounded-2xl bg-white/5 p-4"><p className="text-2xl font-black">{favourites.length}</p><p className="text-xs text-slate-400">Bookmarks</p></div>
+                    <div className="rounded-2xl bg-white/5 p-4"><p className="text-2xl font-black">{completedPapers.length}</p><p className="text-xs text-slate-400">Completed</p></div>
+                  </div>
+                  <div className="mt-5 rounded-2xl bg-cyan-400/10 p-4 text-sm leading-6 text-cyan-100">
+                    Tip: open a paper, press <strong>Timed mock</strong>, then use <strong>Show MS</strong> after finishing to bring the mark scheme next to the paper.
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-12 grid gap-4 md:grid-cols-3">
+              {boards.filter((board) => board !== "All boards").map((board) => (
+                <button key={board} onClick={() => { setSelectedBoard(board); setPage("library"); }} className="rounded-3xl border border-white/10 bg-white/[0.04] p-6 text-left transition hover:-translate-y-1 hover:border-cyan-300">
+                  <p className="text-sm font-bold text-cyan-300">Exam board</p>
+                  <h3 className="mt-2 text-2xl font-black">{board}</h3>
+                  <p className="mt-2 text-sm text-slate-400">Browse subjects, papers, topic tests, and mocks.</p>
+                </button>
+              ))}
+            </div>
+          </div>
+        </section>
+        <AuthModal
   showAuthModal={showAuthModal}
   setShowAuthModal={setShowAuthModal}
   email={email}
@@ -915,12 +739,14 @@ if (page === "library") {
   signIn={signIn}
   signUp={signUp}
 />
-
-<LockedActionModal
-  showLockedModal={showLockedModal}
-  setShowLockedModal={setShowLockedModal}
-  setShowAuthModal={setShowAuthModal}
-/>
+      </div>
+    );
+  }
+function startFloatingMock() {
+  setShowFloatingMock(true);
+}
+  return (
+    <div className="min-h-screen bg-slate-950 text-white">
       {showFloatingMock && (
   <MockTimer onClose={() => setShowFloatingMock(false)} />
 )}
@@ -978,25 +804,6 @@ if (page === "library") {
 
       <main className="mx-auto grid max-w-7xl gap-6 px-6 py-8 sm:px-10 lg:grid-cols-[360px_1fr] lg:px-16">
         <aside className="space-y-5">
-          <button
-  onClick={() => {
-    setDashboardView("overview");
-    closePreview();
-  }}
-  className={`w-full rounded-3xl border p-5 text-left transition hover:-translate-y-0.5 ${
-    dashboardView === "overview"
-      ? "border-rose-300 bg-rose-400/10"
-      : "border-white/10 bg-white/[0.04] hover:border-white/25"
-  }`}
->
-  <p className="text-sm font-black uppercase tracking-[0.2em] text-rose-200">
-    Home
-  </p>
-  <h3 className="mt-2 text-xl font-black text-white">My dashboard</h3>
-  <p className="mt-2 text-sm text-slate-400">
-    Choose subjects and see your revision overview.
-  </p>
-</button>
           <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-5 shadow-2xl">
             <input value={subjectSearch} onChange={(event) => setSubjectSearch(event.target.value)} placeholder="Search subjects..." className="w-full rounded-2xl border border-white/10 bg-slate-900 px-4 py-3 text-white outline-none placeholder:text-slate-500 focus:border-cyan-300" />
             <div className="mt-4 grid gap-3">
@@ -1024,10 +831,6 @@ if (page === "library") {
         </aside>
 
         <section className="rounded-3xl border border-white/10 bg-white/[0.04] p-5 shadow-2xl">
-        {dashboardView === "overview" ? (
-          <DashboardOverview />
-        ) : (
-          <>
           <div className="mb-6 flex flex-wrap items-start justify-between gap-4 rounded-3xl bg-slate-900 p-5">
             <div>
               <p className="text-sm font-bold text-cyan-300">{selectedSubject.board}</p>
@@ -1112,9 +915,63 @@ if (page === "library") {
               </div>
             </div>
           )}
-            </>
-)}  
 </section>
+
+{showAuthModal && (
+  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+    <div className="w-full max-w-md rounded-3xl border border-white/10 bg-slate-900 p-8 shadow-2xl">
+      
+      <div className="mb-6 flex items-center justify-between">
+        <h2 className="text-3xl font-black text-white">
+          Welcome back
+        </h2>
+
+        <button
+          onClick={() => setShowAuthModal(false)}
+          className="text-2xl text-slate-400 hover:text-white"
+        >
+          ×
+        </button>
+      </div>
+
+      <p className="mb-6 text-slate-400">
+        Login or create your account
+      </p>
+
+      <input
+        type="email"
+        placeholder="Email"
+        value={email}
+        onChange={(e) => setEmail(e.target.value)}
+        className="mb-4 w-full rounded-2xl bg-slate-950 p-4 text-white outline-none"
+      />
+
+      <input
+        type="password"
+        placeholder="Password"
+        value={password}
+        onChange={(e) => setPassword(e.target.value)}
+        className="mb-6 w-full rounded-2xl bg-slate-950 p-4 text-white outline-none"
+      />
+
+      <div className="flex gap-3">
+        <button
+          onClick={signIn}
+          className="flex-1 rounded-2xl bg-cyan-400 py-4 font-black text-slate-950"
+        >
+          Login
+        </button>
+
+        <button
+          onClick={signUp}
+          className="flex-1 rounded-2xl bg-white py-4 font-black text-slate-950"
+        >
+          Sign Up
+        </button>
+      </div>
+    </div>
+  </div>
+)}
 
 </main>
 </div>
