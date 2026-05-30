@@ -954,10 +954,33 @@ function startFloatingMock() {
 }
 if (page === "library") {
   return (
-    <Dashboard
-      user={user}
-      onRequireLogin={() => setShowLockedModal(true)}
-    />
+    <>
+      <Dashboard
+        user={user}
+        onRequireLogin={() => setShowLockedModal(true)}
+        onGoHome={() => {
+          setPage("home");
+          window.scrollTo(0, 0);
+        }}
+      />
+
+      <AuthModal
+        showAuthModal={showAuthModal}
+        setShowAuthModal={setShowAuthModal}
+        email={email}
+        setEmail={setEmail}
+        password={password}
+        setPassword={setPassword}
+        signIn={signIn}
+        signUp={signUp}
+      />
+
+      <LockedActionModal
+        showLockedModal={showLockedModal}
+        setShowLockedModal={setShowLockedModal}
+        setShowAuthModal={setShowAuthModal}
+      />
+    </>
   );
 }
   return (

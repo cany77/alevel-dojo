@@ -127,9 +127,13 @@ function allSubjects() {
   );
 }
 
-function Logo() {
+
+function Logo({ onGoHome = () => {} }) {
   return (
-    <div className="flex items-center gap-3">
+    <button
+      onClick={onGoHome}
+      className="flex items-center gap-3 text-left"
+    >
       <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-rose-400 to-violet-500 text-sm font-black text-white shadow-lg shadow-rose-500/20">
         A
       </div>
@@ -137,7 +141,7 @@ function Logo() {
         <p className="text-base font-black tracking-tight text-white">A-Level Dojo</p>
         <p className="-mt-1 text-[11px] text-white/40">dashboard preview</p>
       </div>
-    </div>
+    </button>
   );
 }
 
@@ -244,7 +248,7 @@ function SidebarSubject({ subject, active, onOpen }) {
   );
 }
 
-function SelectedSubjectCard({ subject, onOpen }) {
+function ActiveSubjectCard({ subject, onOpen }) {
   const colors = boardColors[subject.board];
 
   return (
@@ -302,7 +306,7 @@ function EmptySubjectRequest({ onOpenModal }) {
     </div>
   );
 }
-function PastPapersPanel({ subject }) {
+function PastPapersPanel({ subject, user, onRequireLogin }) {
   const [activePreview, setActivePreview] = useState(null);
   const [showMarkScheme, setShowMarkScheme] = useState(false);
   const [maximizedPreview, setMaximizedPreview] = useState(false);
@@ -368,7 +372,14 @@ function PastPapersPanel({ subject }) {
         (completionFilter === "Incomplete" && !isCompleted))
     );
   });
+    function requireLogin(action) {
+    if (!user) {
+        onRequireLogin();
+        return;
+    }
 
+    action();
+    }
   function toggleCompleted(paper) {
     const id = paperId(paper);
 
@@ -624,7 +635,11 @@ function PastPapersPanel({ subject }) {
 
                       <div className="flex flex-wrap gap-2">
                         <button
-                          onClick={() => toggleCompleted(paper)}
+                          onClick={() =>
+                            requireLogin(() => {
+                                toggleCompleted(paper);
+                            })
+                            }
                           className={`rounded-xl px-4 py-2 text-sm font-black ${
                             isCompleted
                               ? "bg-green-300 text-slate-950"
@@ -635,7 +650,11 @@ function PastPapersPanel({ subject }) {
                         </button>
 
                         <button
-                          onClick={() => toggleSaved(paper)}
+                          onClick={() =>
+                            requireLogin(() => {
+                                toggleSaved(paper);
+                            })
+                            }
                           className={`rounded-xl px-4 py-2 text-sm font-black ${
                             isSaved
                               ? "bg-yellow-300 text-slate-950"
@@ -649,10 +668,12 @@ function PastPapersPanel({ subject }) {
 
                     <div className="mt-4 flex flex-wrap gap-3">
                       <button
-                        onClick={() => {
-                          setActivePreview({ paper, mode: "preview" });
-                          setShowMarkScheme(true);
-                        }}
+                        onClick={() =>
+                          requireLogin(() => {
+                            setActivePreview({ paper, mode: "preview" });
+                            setShowMarkScheme(true);
+                          })
+                        }
                         className="inline-flex items-center gap-2 rounded-xl bg-cyan-300 px-4 py-2 text-sm font-black text-slate-950 hover:bg-cyan-200"
                       >
                         <Eye size={16} />
@@ -660,10 +681,12 @@ function PastPapersPanel({ subject }) {
                       </button>
 
                       <button
-                        onClick={() => {
-                          setActivePreview({ paper, mode: "edit" });
-                          setShowMarkScheme(false);
-                        }}
+                       onClick={() =>
+  requireLogin(() => {
+    setActivePreview({ paper, mode: "edit" });
+    setShowMarkScheme(false);
+  })
+}
                         className="inline-flex items-center gap-2 rounded-xl bg-[#ff554f] px-4 py-2 text-sm font-black text-white hover:brightness-110"
                       >
                         <Edit3 size={16} />
@@ -673,7 +696,9 @@ function PastPapersPanel({ subject }) {
                       {paper.questionPaper && (
                         <button
                           onClick={() =>
-                            window.open(paper.questionPaper, "_blank")
+                            requireLogin(() => {
+                              window.open(paper.questionPaper, "_blank");
+                            })
                           }
                           className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2 text-sm font-black text-slate-950"
                         >
@@ -685,8 +710,10 @@ function PastPapersPanel({ subject }) {
                       {paper.markScheme && (
                         <button
                           onClick={() =>
-                            window.open(paper.markScheme, "_blank")
-                          }
+                            requireLogin(() => {
+                                window.open(paper.markScheme, "_blank");
+                            })
+                            }
                           className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2 text-sm font-black text-slate-950"
                         >
                           <Download size={16} />
@@ -704,7 +731,7 @@ function PastPapersPanel({ subject }) {
     </div>
   );
 }
-function TopicTestsPanel({ subject }) {
+function TopicTestsPanel({ subject, user, onRequireLogin }) {
   const [activePreview, setActivePreview] = useState(null);
   const [testSearch, setTestSearch] = useState("");
   const [selectedTopic, setSelectedTopic] = useState("All topics");
@@ -754,7 +781,14 @@ function TopicTestsPanel({ subject }) {
         (completionFilter === "Incomplete" && !isCompleted))
     );
   });
+    function requireLogin(action) {
+    if (!user) {
+        onRequireLogin();
+        return;
+    }
 
+    action();
+    }
   function toggleCompleted(paper) {
     const id = paperId(paper);
 
@@ -916,7 +950,11 @@ function TopicTestsPanel({ subject }) {
 
                       <div className="flex flex-wrap gap-2">
                         <button
-                          onClick={() => toggleCompleted(paper)}
+                          onClick={() =>
+                            requireLogin(() => {
+                                toggleCompleted(paper);
+                            })
+                            }
                           className={`rounded-xl px-4 py-2 text-sm font-black ${
                             isCompleted
                               ? "bg-green-300 text-slate-950"
@@ -927,7 +965,11 @@ function TopicTestsPanel({ subject }) {
                         </button>
 
                         <button
-                          onClick={() => toggleSaved(paper)}
+                          onClick={() =>
+                            requireLogin(() => {
+                                toggleSaved(paper);
+                            })
+                            }
                           className={`rounded-xl px-4 py-2 text-sm font-black ${
                             isSaved
                               ? "bg-yellow-300 text-slate-950"
@@ -941,7 +983,11 @@ function TopicTestsPanel({ subject }) {
 
                     <div className="mt-4 flex flex-wrap gap-3">
                       <button
-                        onClick={() => setActivePreview({ paper, mode: "preview" })}
+                        onClick={() =>
+                          requireLogin(() => {
+                            setActivePreview({ paper, mode: "preview" });
+                          })
+                        }
                         className="inline-flex items-center gap-2 rounded-xl bg-cyan-300 px-4 py-2 text-sm font-black text-slate-950 hover:bg-cyan-200"
                       >
                         <Eye size={16} />
@@ -949,7 +995,11 @@ function TopicTestsPanel({ subject }) {
                       </button>
 
                       <button
-                        onClick={() => setActivePreview({ paper, mode: "edit" })}
+                        onClick={() =>
+                          requireLogin(() => {
+                            setActivePreview({ paper, mode: "edit" });
+                          })
+                        }
                         className="inline-flex items-center gap-2 rounded-xl bg-[#ff554f] px-4 py-2 text-sm font-black text-white hover:brightness-110"
                       >
                         <Edit3 size={16} />
@@ -958,7 +1008,11 @@ function TopicTestsPanel({ subject }) {
 
                       {fileUrl && (
                         <button
-                          onClick={() => window.open(fileUrl, "_blank")}
+                          onClick={() =>
+                            requireLogin(() => {
+                              window.open(fileUrl, "_blank");
+                            })
+                          }
                           className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2 text-sm font-black text-slate-950"
                         >
                           <Download size={16} />
@@ -976,7 +1030,7 @@ function TopicTestsPanel({ subject }) {
     </div>
   );
 }
-function SubjectPagePreview({ subject, onBack }) {
+function SubjectPagePreview({ subject, onBack, user, onRequireLogin }) {
   const [section, setSection] = useState("overview");
 
   const cards = [
@@ -1049,9 +1103,17 @@ function SubjectPagePreview({ subject, onBack }) {
       </div>
 
       {section === "pastpapers" ? (
-        <PastPapersPanel subject={subject} />
+        <PastPapersPanel
+            subject={subject}
+            user={user}
+            onRequireLogin={onRequireLogin}
+            />
         ) : section === "topictests" ? (
-        <TopicTestsPanel subject={subject} />
+        <TopicTestsPanel
+            subject={subject}
+            user={user}
+            onRequireLogin={onRequireLogin}
+            />
         ) : (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {cards.map(([Icon, title, text, id]) => (
@@ -1074,7 +1136,7 @@ function SubjectPagePreview({ subject, onBack }) {
         </div>
       )}
 
-      {section !== "overview" && section !== "pastpapers" && (
+      {section !== "overview" && section !== "pastpapers" && section !== "topictests" && (
         <div className="mt-5 rounded-2xl border border-white/10 bg-white/[0.035] p-6">
           <h3 className="text-xl font-black text-white">
             {cards.find((card) => card[3] === section)?.[1]}
@@ -1090,55 +1152,82 @@ function SubjectPagePreview({ subject, onBack }) {
   );
 }
 
-export default function Dashboard({ user, onRequireLogin = () => {} }) {
-  const [selectedIds, setSelectedIds] = useState(["physics", "computer-science", "maths"]);
+export default function Dashboard({
+  user,
+  onRequireLogin = () => {},
+  onGoHome = () => {},
+}) {
+  const [selectedIds, setSelectedIds] = useState(() =>
+    readStorage("alevel-dojo-selected-subjects", ["physics", "computer-science", "maths"])
+  );
   const [modalOpen, setModalOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [activeSubjectId, setActiveSubjectId] = useState(null);
-
-  const subjects = allSubjects();
-  useEffect(() => {
-  async function loadUserSubjects() {
-    if (!user) {
-      setSelectedIds([]);
-      return;
-    }
-
-    const { data, error } = await supabase
-      .from("user_subjects")
-      .select("subject_id")
-      .eq("user_id", user.id);
-
-    if (error) {
-      console.error(error);
-      return;
-    }
-
-    setSelectedIds(data.map((item) => item.subject_id));
-  }
-
-  loadUserSubjects();
-}, [user]);
-  const selectedSubjects = subjects.filter((subject) => selectedIds.includes(subject.id));
-  const activeSubject = subjects.find((subject) => subject.id === activeSubjectId);
-
-  const sidebarSubjects = useMemo(() => {
-    const base = selectedSubjects.length > 0 ? selectedSubjects : subjects;
-    return base.filter((subject) =>
-      `${subject.name} ${subject.board}`.toLowerCase().includes(search.toLowerCase())
-    );
-  }, [search, selectedSubjects, subjects]);
-
-async function toggleSubject(id) {
+function requireLogin(action) {
   if (!user) {
     onRequireLogin();
     return;
   }
 
+  action();
+}
+  const subjects = allSubjects();
+  useEffect(() => {
+    async function loadUserSubjects() {
+      if (!user) {
+        setSelectedIds(
+          readStorage("alevel-dojo-selected-subjects", [
+            "physics",
+            "computer-science",
+            "maths",
+          ])
+        );
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("user_subjects")
+        .select("subject_id")
+        .eq("user_id", user.id);
+
+      if (error) {
+        console.error(error);
+        return;
+      }
+
+      const ids = data.map((item) => item.subject_id);
+      setSelectedIds(ids);
+      writeStorage("alevel-dojo-selected-subjects", ids);
+    }
+
+    loadUserSubjects();
+  }, [user]);
+  const activeSubjects = subjects.filter((subject) => selectedIds.includes(subject.id));
+  const activeSubject = subjects.find((subject) => subject.id === activeSubjectId) || null;
+
+  const sidebarSubjects = useMemo(() => {
+    const base = activeSubjects.length > 0 ? activeSubjects : subjects;
+    return base.filter((subject) =>
+      `${subject.name} ${subject.board}`.toLowerCase().includes(search.toLowerCase())
+    );
+  }, [search, activeSubjects, subjects]);
+
+async function toggleSubject(id) {
   const subject = subjects.find((item) => item.id === id);
   if (!subject) return;
 
   const alreadySelected = selectedIds.includes(id);
+
+  const nextIds = alreadySelected
+    ? selectedIds.filter((item) => item !== id)
+    : [...selectedIds, id];
+
+  setSelectedIds(nextIds);
+  writeStorage("alevel-dojo-selected-subjects", nextIds);
+
+  // If the student is logged in, also save the subject choices to Supabase.
+  // If they are logged out, the choice is only kept locally for now.
+  if (!user) return;
 
   if (alreadySelected) {
     const { error } = await supabase
@@ -1150,12 +1239,9 @@ async function toggleSubject(id) {
     if (error) {
       console.error(error);
       alert(error.message);
-      return;
     }
-
-    setSelectedIds((current) => current.filter((item) => item !== id));
   } else {
-    const { error } = await supabase.from("user_subjects").insert({
+    const { error } = await supabase.from("user_subjects").upsert({
       user_id: user.id,
       subject_id: subject.id,
       subject_name: subject.name,
@@ -1165,10 +1251,7 @@ async function toggleSubject(id) {
     if (error) {
       console.error(error);
       alert(error.message);
-      return;
     }
-
-    setSelectedIds((current) => [...current, id]);
   }
 }
 
@@ -1187,7 +1270,7 @@ async function toggleSubject(id) {
       <div className="relative z-10 flex min-h-screen">
         <aside className="hidden w-[370px] shrink-0 border-r border-white/10 bg-slate-950/75 p-5 backdrop-blur-xl lg:block">
           <div className="mb-6 flex items-center justify-between">
-            <Logo />
+            <Logo onGoHome={onGoHome} />
             <button className="rounded-xl border border-white/10 p-2.5 text-white/45 hover:bg-white/[0.05]">
               <Settings2 size={18} />
             </button>
@@ -1246,7 +1329,7 @@ async function toggleSubject(id) {
 
             <div className="flex flex-wrap items-center gap-3">
               <div className="rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-white/55">
-                {selectedSubjects.length} subjects selected
+                {activeSubjects.length} subjects selected
               </div>
               <button
                 onClick={() => setModalOpen(true)}
@@ -1258,10 +1341,15 @@ async function toggleSubject(id) {
           </header>
 
           {activeSubject ? (
-            <SubjectPagePreview subject={activeSubject} onBack={() => setActiveSubjectId(null)} />
+            <SubjectPagePreview
+                subject={activeSubject}
+                onBack={() => setActiveSubjectId(null)}
+                user={user}
+                onRequireLogin={onRequireLogin}
+                />
           ) : (
             <>
-              {selectedSubjects.length === 0 ? (
+              {activeSubjects.length === 0 ? (
                 <EmptySubjectRequest onOpenModal={() => setModalOpen(true)} />
               ) : (
                 <>
@@ -1293,8 +1381,8 @@ async function toggleSubject(id) {
                     </div>
 
                     <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                      {selectedSubjects.map((subject) => (
-                        <SelectedSubjectCard
+                      {activeSubjects.map((subject) => (
+                        <ActiveSubjectCard
                           key={subject.id}
                           subject={subject}
                           onOpen={() => setActiveSubjectId(subject.id)}
