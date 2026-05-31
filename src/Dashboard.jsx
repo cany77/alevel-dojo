@@ -4,15 +4,25 @@ import PdfViewer from "./PdfViewer";
 import Watermark from "./Watermark";
 import React, { useEffect, useMemo, useState } from "react";
 import {
+  BarChart3,
   BookOpen,
   Brain,
+  CalendarDays,
   Check,
+  ChevronLeft,
   ChevronRight,
   FileText,
+  GraduationCap,
   Home,
   Layers3,
   LibraryBig,
+  LineChart as LineChartIcon,
+  Lock,
+  LogOut,
+  Menu,
+  RotateCcw,
   Plus,
+  Save,
   Search,
   Settings2,
   Sparkles,
@@ -22,6 +32,7 @@ import {
   Edit3,
   Eye,
   ArrowLeft,
+  User,
 } from "lucide-react";
 
 const subjectGroups = [
@@ -76,6 +87,34 @@ const boardColors = {
     soft: "bg-violet-400/10 border-violet-300/20",
   },
 };
+
+const examDates = [
+  { subject: "Physics", board: "OxfordAQA", paper: "Unit 3: Fields and their consequences", date: "2026-06-01" },
+  { subject: "Chemistry", board: "OxfordAQA", paper: "Unit 4: Kinetics and equilibria", date: "2026-06-05" },
+  { subject: "Biology", board: "OxfordAQA", paper: "Unit 3: Populations and genes", date: "2026-06-09" },
+  { subject: "Psychology", board: "OxfordAQA", paper: "Paper 2: Core topics", date: "2026-06-12" },
+  { subject: "Computer Science", board: "Cambridge", paper: "Paper 3: Advanced theory", date: "2026-06-03" },
+  { subject: "Mathematics", board: "Edexcel", paper: "Pure 3", date: "2026-06-04" },
+  { subject: "Further Mathematics", board: "Edexcel", paper: "Further Pure 2", date: "2026-06-10" },
+  { subject: "Statistics", board: "Edexcel", paper: "Statistics 2", date: "2026-06-14" },
+  { subject: "Mechanics", board: "Edexcel", paper: "Mechanics 2", date: "2026-06-18" },
+];
+
+const gradeBoundaryData = [
+  { year: "2023", astar: 79, a: 66, b: 54 },
+  { year: "2024", astar: 82, a: 69, b: 57 },
+  { year: "2025", astar: 84, a: 72, b: 60 },
+  { year: "2026", astar: 87, a: 75, b: 63 },
+];
+
+const plans = [
+  ["Free", "Past papers, topic tests, save progress"],
+  ["Pro", "AI tutor, mistakes tracker, grade boundary insights"],
+  ["Premium", "Advanced AI, topic-test generator, deeper analytics"],
+];
+
+const userPlan = "free";
+
 function paperId(paper) {
   return [
     paper.type,
@@ -120,6 +159,12 @@ function writeStorage(key, value) {
 
 function unique(values) {
   return [...new Set(values.filter(Boolean))];
+}
+function daysUntil(date) {
+  const today = new Date();
+  const examDate = new Date(`${date}T00:00:00`);
+  const diff = examDate.getTime() - today.setHours(0, 0, 0, 0);
+  return Math.max(0, Math.ceil(diff / 86400000));
 }
 function allSubjects() {
   return subjectGroups.flatMap((group) =>
@@ -301,6 +346,475 @@ function EmptySubjectRequest({ onOpenModal }) {
           className="mt-6 rounded-2xl bg-cyan-300 px-6 py-3 text-sm font-black text-slate-950 hover:bg-cyan-200"
         >
           Choose subjects
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function SubjectSetupPage({ selectedIds, onToggle, onSave }) {
+  return (
+    <div className="min-h-screen bg-[#060816] text-white">
+      <Watermark />
+      <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_12%_8%,rgba(255,92,82,0.11),transparent_26%),radial-gradient(circle_at_88%_10%,rgba(124,58,237,0.14),transparent_28%),radial-gradient(circle_at_72%_86%,rgba(34,211,238,0.06),transparent_24%)]" />
+      <main className="relative z-10 mx-auto max-w-6xl px-6 py-10">
+        <Logo />
+        <section className="mt-14 rounded-3xl border border-white/10 bg-white/[0.04] p-6 shadow-2xl shadow-black/20 backdrop-blur-xl md:p-10">
+          <div className="max-w-3xl">
+            <p className="text-sm font-black uppercase tracking-[0.28em] text-cyan-200">First login setup</p>
+            <h1 className="mt-4 text-4xl font-black tracking-tight md:text-6xl">Choose your subjects</h1>
+            <p className="mt-5 text-base leading-8 text-white/55">
+              Select the subjects and boards you are currently studying. You can change them later.
+            </p>
+          </div>
+
+          <div className="mt-10 space-y-8">
+            {subjectGroups.map((group) => (
+              <section key={group.board}>
+                <div className="mb-4">
+                  <h2 className="text-xl font-black">{group.board}</h2>
+                  <p className="mt-1 text-sm text-white/45">{group.description}</p>
+                </div>
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                  {group.subjects.map((subject) => {
+                    const selected = selectedIds.includes(subject.id);
+                    return (
+                      <button
+                        key={subject.id}
+                        onClick={() => onToggle(subject.id)}
+                        className={`rounded-2xl border p-4 text-left transition-all duration-200 ease-out hover:-translate-y-0.5 ${
+                          selected
+                            ? "border-cyan-300/50 bg-cyan-300/10"
+                            : "border-white/10 bg-slate-950/55 hover:bg-white/[0.05]"
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <h3 className="font-black">{subject.name}</h3>
+                          <span className={`rounded-full px-2 py-1 text-[10px] font-black ${selected ? "bg-cyan-300 text-slate-950" : "bg-white/[0.06] text-white/45"}`}>
+                            {selected ? "Selected" : group.board}
+                          </span>
+                        </div>
+                        <p className="mt-3 text-sm leading-6 text-white/45">{subject.detail}</p>
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+            ))}
+          </div>
+
+          <div className="mt-9 flex flex-wrap items-center justify-between gap-4 border-t border-white/10 pt-6">
+            <p className="text-sm text-white/45">{selectedIds.length} subjects selected</p>
+            <button
+              onClick={onSave}
+              disabled={selectedIds.length === 0}
+              className="rounded-2xl bg-gradient-to-r from-rose-400 to-violet-500 px-6 py-3 text-sm font-black text-white shadow-lg shadow-rose-500/15 transition-all duration-200 ease-out hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-45"
+            >
+              Save subjects
+            </button>
+          </div>
+        </section>
+      </main>
+    </div>
+  );
+}
+
+function DashboardShellSidebar({
+  collapsed,
+  onToggleCollapsed,
+  activeView,
+  onSelectView,
+  activeSubjects,
+  onOpenSubject,
+  onOpenProfile,
+  onGoHome,
+}) {
+  const nav = [
+    [Home, "Dashboard", "dashboard"],
+    [FileText, "Past papers", "pastpapers"],
+    [Layers3, "Topic tests", "topictests"],
+    [CalendarDays, "Exam calendar", "calendar"],
+    [RotateCcw, "Mistakes tracker", "mistakes"],
+    [LineChartIcon, "Grade boundaries", "boundaries"],
+    [Brain, "AI tutor", "ai"],
+    [User, "Profile", "profile"],
+    [Settings2, "Settings", "settings"],
+  ];
+
+  return (
+    <aside className={`${collapsed ? "w-[76px]" : "w-[292px]"} hidden shrink-0 border-r border-white/10 bg-slate-950/78 p-4 backdrop-blur-xl transition-all duration-200 lg:block`}>
+      <div className={`mb-5 flex items-center ${collapsed ? "justify-center" : "justify-between"}`}>
+        {!collapsed && <Logo onGoHome={onGoHome} />}
+        <button
+          onClick={onToggleCollapsed}
+          className="rounded-xl border border-white/10 bg-white/[0.035] p-2.5 text-white/55 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-white/[0.07]"
+          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+        >
+          {collapsed ? <Menu size={18} /> : <ChevronLeft size={18} />}
+        </button>
+      </div>
+
+      <nav className="space-y-2">
+        {nav.map(([Icon, label, id]) => (
+          <button
+            key={id}
+            onClick={() => (id === "profile" ? onOpenProfile() : onSelectView(id))}
+            className={`flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-sm font-bold transition-all duration-200 ease-out hover:-translate-y-0.5 ${
+              activeView === id
+                ? "bg-cyan-300/10 text-cyan-100 ring-1 ring-cyan-300/25"
+                : "text-white/55 hover:bg-white/[0.055] hover:text-white"
+            } ${collapsed ? "justify-center" : ""}`}
+            title={label}
+          >
+            <Icon size={18} />
+            {!collapsed && <span>{label}</span>}
+          </button>
+        ))}
+      </nav>
+
+      {!collapsed && (
+        <div className="mt-7 border-t border-white/10 pt-5">
+          <p className="mb-3 text-xs font-black uppercase tracking-[0.22em] text-white/32">My subjects</p>
+          <div className="space-y-2">
+            {activeSubjects.slice(0, 4).map((subject) => (
+              <button
+                key={subject.id}
+                onClick={() => onOpenSubject(subject.id)}
+                className="w-full rounded-2xl border border-white/10 bg-white/[0.035] p-3 text-left transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-white/[0.06]"
+              >
+                <p className="truncate text-sm font-black text-white">{subject.name}</p>
+                <p className="mt-1 text-xs text-white/38">{subject.board}</p>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </aside>
+  );
+}
+
+function MetricCard({ label, value, detail, accent = "text-cyan-200" }) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-5">
+      <p className={`text-sm font-black ${accent}`}>{label}</p>
+      <p className="mt-2 text-2xl font-black text-white">{value}</p>
+      <p className="mt-1 text-sm text-white/40">{detail}</p>
+    </div>
+  );
+}
+
+function DashboardHome({ activeSubjects, onOpenSubject, stats, upcomingExams, onSelectView }) {
+  return (
+    <>
+      <section className="mb-6 rounded-3xl border border-white/10 bg-white/[0.035] p-6">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <p className="mb-2 flex items-center gap-2 text-xs font-black uppercase tracking-[0.22em] text-cyan-200">
+              <Sparkles size={15} /> A-Level Dojo dashboard
+            </p>
+            <h2 className="text-3xl font-black tracking-tight text-white">Start where you left off.</h2>
+            <p className="mt-2 max-w-2xl text-sm leading-7 text-white/50">
+              Your subjects stay compact, your revision tools are one click away, and your progress stays visible without crowding the page.
+            </p>
+          </div>
+          <button
+            onClick={() => onSelectView("calendar")}
+            className="rounded-2xl border border-white/10 bg-white/[0.05] px-4 py-3 text-sm font-black text-white/70 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-white/[0.08]"
+          >
+            View exam calendar
+          </button>
+        </div>
+      </section>
+
+      <section className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+        <MetricCard label="Upcoming exams" value={upcomingExams.length} detail="Personal timetable" />
+        <MetricCard label="Continue revision" value="1 paper" detail="Resume your latest session" accent="text-violet-200" />
+        <MetricCard label="Mistakes to review" value={stats.mistakesOpen} detail="Unfixed questions" accent="text-rose-200" />
+        <MetricCard label="Completed papers" value={stats.completedCount} detail="Marked complete" accent="text-emerald-200" />
+        <MetricCard label="Saved papers" value={stats.savedCount} detail="Ready to revisit" accent="text-yellow-200" />
+      </section>
+
+      <section className="mb-6">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <h2 className="text-xl font-black text-white">My subjects</h2>
+          <p className="text-sm text-white/40">Open a card for papers and topic tests</p>
+        </div>
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {activeSubjects.map((subject) => (
+            <ActiveSubjectCard key={subject.id} subject={subject} onOpen={() => onOpenSubject(subject.id)} />
+          ))}
+        </div>
+      </section>
+
+      <section className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
+        <ExamCalendarPanel exams={upcomingExams.slice(0, 4)} compact />
+        <AiTutorPanel onUpgrade={() => onSelectView("ai")} compact />
+      </section>
+    </>
+  );
+}
+
+function ExamCalendarPanel({ exams, compact = false }) {
+  return (
+    <section className="rounded-3xl border border-white/10 bg-white/[0.035] p-6">
+      <div className="mb-5 flex items-center justify-between gap-3">
+        <div>
+          <h2 className="text-xl font-black text-white">Exam calendar</h2>
+          <p className="mt-1 text-sm text-white/42">Static timetable for selected subjects</p>
+        </div>
+        <CalendarDays className="text-cyan-200" size={22} />
+      </div>
+      <div className="space-y-3">
+        {exams.length === 0 ? (
+          <p className="rounded-2xl border border-white/10 bg-slate-950/45 p-4 text-sm text-white/45">
+            Select subjects to see upcoming exams.
+          </p>
+        ) : (
+          exams.map((exam) => (
+            <div key={`${exam.board}-${exam.subject}-${exam.paper}`} className="grid gap-3 rounded-2xl border border-white/10 bg-slate-950/45 p-4 md:grid-cols-[1fr_auto]">
+              <div>
+                <p className="font-black text-white">{exam.subject}</p>
+                <p className="mt-1 text-sm text-white/42">{exam.board} - {exam.paper}</p>
+                {!compact && <p className="mt-2 text-xs font-bold text-cyan-200">{new Date(exam.date).toLocaleDateString()}</p>}
+              </div>
+              <div className="rounded-2xl bg-cyan-300/10 px-4 py-3 text-center">
+                <p className="text-2xl font-black text-cyan-100">{daysUntil(exam.date)}</p>
+                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-cyan-200/70">days</p>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    </section>
+  );
+}
+
+function GradeBoundariesPanel() {
+  const chartLines = [
+    { key: "astar", label: "A*", color: "#22d3ee", points: "50,92 160,84 270,76 380,66" },
+    { key: "a", label: "A", color: "#a78bfa", points: "50,128 160,119 270,109 380,96" },
+    { key: "b", label: "B", color: "#fb7185", points: "50,164 160,151 270,139 380,124" },
+  ];
+
+  return (
+    <section className="rounded-3xl border border-white/10 bg-white/[0.035] p-6">
+      <div className="mb-5">
+        <h2 className="text-xl font-black text-white">Grade boundaries</h2>
+        <p className="mt-1 text-sm text-white/42">Example A* trend by subject and board. Static for now.</p>
+      </div>
+      <div className="h-[300px] rounded-2xl border border-white/10 bg-slate-950/45 p-4">
+        <svg viewBox="0 0 430 230" className="h-full w-full" role="img" aria-label="A star, A, and B grade boundary trend from 2023 to 2026 predicted">
+          <defs>
+            <linearGradient id="boundaryFade" x1="0" x2="1" y1="0" y2="0">
+              <stop offset="0%" stopColor="#22d3ee" stopOpacity="0.14" />
+              <stop offset="55%" stopColor="#a78bfa" stopOpacity="0.16" />
+              <stop offset="100%" stopColor="#fb7185" stopOpacity="0.12" />
+            </linearGradient>
+          </defs>
+
+          <rect x="38" y="22" width="360" height="170" rx="18" fill="url(#boundaryFade)" />
+          {[56, 92, 128, 164].map((y) => (
+            <line key={y} x1="50" y1={y} x2="390" y2={y} stroke="rgba(255,255,255,0.10)" strokeDasharray="4 6" />
+          ))}
+          <line x1="50" y1="192" x2="390" y2="192" stroke="rgba(255,255,255,0.24)" />
+          <line x1="50" y1="32" x2="50" y2="192" stroke="rgba(255,255,255,0.24)" />
+
+          {chartLines.map((line) => (
+            <g key={line.key}>
+              <polyline
+                points={line.points}
+                fill="none"
+                stroke={line.color}
+                strokeWidth="4"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              {line.points.split(" ").map((point) => {
+                const [cx, cy] = point.split(",");
+                return <circle key={`${line.key}-${point}`} cx={cx} cy={cy} r="4.5" fill={line.color} />;
+              })}
+            </g>
+          ))}
+
+          {["2023", "2024", "2025", "2026 predicted"].map((year, index) => (
+            <text key={year} x={50 + index * 110} y="214" textAnchor="middle" fill="rgba(255,255,255,0.48)" fontSize="12" fontWeight="700">
+              {year}
+            </text>
+          ))}
+          {["94%", "77%", "62%", "47%"].map((label, index) => (
+            <text key={label} x="38" y={58 + index * 36} textAnchor="end" fill="rgba(255,255,255,0.42)" fontSize="11" fontWeight="700">
+              {label}
+            </text>
+          ))}
+        </svg>
+      </div>
+      <div className="mt-4 flex flex-wrap gap-4 text-sm font-bold text-white/55">
+        {chartLines.map((line) => (
+          <span key={line.key} className="inline-flex items-center gap-2">
+            <span className="h-3 w-3 rounded-full" style={{ backgroundColor: line.color }} />
+            {line.label}
+          </span>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function MistakesTrackerPanel({ mistakes, setMistakes }) {
+  const [draft, setDraft] = useState({ question: "", topic: "", note: "", fixed: false });
+
+  function saveMistake() {
+    if (!draft.question.trim() && !draft.note.trim()) return;
+    setMistakes([{ id: Date.now(), ...draft }, ...mistakes]);
+    setDraft({ question: "", topic: "", note: "", fixed: false });
+  }
+
+  function toggleFixed(id) {
+    setMistakes(mistakes.map((mistake) => mistake.id === id ? { ...mistake, fixed: !mistake.fixed } : mistake));
+  }
+
+  return (
+    <section className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
+      <div className="rounded-3xl border border-white/10 bg-white/[0.035] p-6">
+        <h2 className="text-xl font-black text-white">Mistakes tracker</h2>
+        <p className="mt-1 text-sm text-white/42">Track questions you got wrong and mark them fixed later.</p>
+        <div className="mt-5 rounded-2xl border border-dashed border-white/15 bg-slate-950/45 p-5 text-center text-sm text-white/40">
+          Question image upload placeholder
+        </div>
+        <input
+          value={draft.topic}
+          onChange={(event) => setDraft({ ...draft, topic: event.target.value })}
+          placeholder="Topic"
+          className="mt-3 w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white outline-none placeholder:text-white/30 focus:border-cyan-300"
+        />
+        <textarea
+          value={draft.question}
+          onChange={(event) => setDraft({ ...draft, question: event.target.value })}
+          placeholder="Question text"
+          className="mt-3 min-h-24 w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white outline-none placeholder:text-white/30 focus:border-cyan-300"
+        />
+        <textarea
+          value={draft.note}
+          onChange={(event) => setDraft({ ...draft, note: event.target.value })}
+          placeholder="What went wrong?"
+          className="mt-3 min-h-24 w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white outline-none placeholder:text-white/30 focus:border-cyan-300"
+        />
+        <button onClick={saveMistake} className="mt-3 inline-flex items-center gap-2 rounded-2xl bg-violet-400 px-5 py-3 text-sm font-black text-white">
+          <Save size={16} /> Save mistake
+        </button>
+      </div>
+
+      <div className="rounded-3xl border border-white/10 bg-white/[0.035] p-6">
+        <h3 className="text-lg font-black text-white">Review queue</h3>
+        <div className="mt-4 space-y-3">
+          {mistakes.length === 0 ? (
+            <p className="rounded-2xl border border-white/10 bg-slate-950/45 p-4 text-sm text-white/45">No mistakes saved yet.</p>
+          ) : (
+            mistakes.map((mistake) => (
+              <button key={mistake.id} onClick={() => toggleFixed(mistake.id)} className="w-full rounded-2xl border border-white/10 bg-slate-950/45 p-4 text-left transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-white/[0.055]">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-black text-white">{mistake.topic || "Untitled topic"}</p>
+                    <p className="mt-1 text-sm text-white/45">{mistake.note || mistake.question}</p>
+                  </div>
+                  <span className={`rounded-full px-3 py-1 text-xs font-black ${mistake.fixed ? "bg-emerald-300 text-slate-950" : "bg-rose-400/15 text-rose-200"}`}>
+                    {mistake.fixed ? "Fixed" : "Open"}
+                  </span>
+                </div>
+              </button>
+            ))
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function AiTutorPanel({ onUpgrade, compact = false }) {
+  return (
+    <section className="rounded-3xl border border-white/10 bg-white/[0.035] p-6">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h2 className="text-xl font-black text-white">Personalized AI tutor</h2>
+          <p className="mt-1 text-sm text-white/42">Locked on the Free plan for now.</p>
+        </div>
+        <Lock className="text-violet-200" size={22} />
+      </div>
+      <div className={`mt-5 grid gap-3 ${compact ? "" : "md:grid-cols-2"}`}>
+        {[
+          ["Year group", "Year 13"],
+          ["Predicted grade", "A"],
+          ["Target grade", "A*"],
+          ["Weak topics", "Fields, integration, organic mechanisms"],
+        ].map(([label, value]) => (
+          <div key={label} className="rounded-2xl border border-white/10 bg-slate-950/45 p-4">
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-white/32">{label}</p>
+            <p className="mt-2 font-black text-white">{value}</p>
+          </div>
+        ))}
+      </div>
+      <div className="mt-5 grid gap-3 md:grid-cols-3">
+        {plans.map(([name, text]) => (
+          <div key={name} className={`rounded-2xl border p-4 ${name === "Free" ? "border-cyan-300/20 bg-cyan-300/10" : "border-white/10 bg-slate-950/45"}`}>
+            <p className="font-black text-white">{name}</p>
+            <p className="mt-2 text-xs leading-5 text-white/45">{text}</p>
+          </div>
+        ))}
+      </div>
+      <button onClick={onUpgrade} className="mt-5 rounded-2xl bg-gradient-to-r from-rose-400 to-violet-500 px-5 py-3 text-sm font-black text-white">
+        Upgrade for AI tutor
+      </button>
+    </section>
+  );
+}
+
+function UpgradeModal({ open, onClose }) {
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/60 px-4 backdrop-blur-sm">
+      <div className="w-full max-w-2xl rounded-3xl border border-white/10 bg-[#0d1224] p-6 text-white shadow-2xl">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-2xl font-black">Upgrade AI tutor</h2>
+            <p className="mt-2 text-sm leading-7 text-white/50">AI tutor is part of Pro and Premium. Plans are placeholders for now.</p>
+          </div>
+          <button onClick={onClose} className="rounded-xl p-2 text-white/50 hover:bg-white/[0.06]"><X size={20} /></button>
+        </div>
+        <div className="mt-5 grid gap-3 md:grid-cols-3">
+          {plans.map(([name, text]) => (
+            <div key={name} className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+              <p className="font-black">{name}</p>
+              <p className="mt-2 text-sm leading-6 text-white/45">{text}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ProfileModal({ open, onClose, user, subjects, stats, mistakes, onLogout }) {
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/60 px-4 backdrop-blur-sm">
+      <div className="w-full max-w-3xl rounded-3xl border border-white/10 bg-[#0d1224] p-6 text-white shadow-2xl">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-2xl font-black">Profile</h2>
+            <p className="mt-1 text-sm text-white/45">{user?.email || "Signed in student"}</p>
+          </div>
+          <button onClick={onClose} className="rounded-xl p-2 text-white/50 hover:bg-white/[0.06]"><X size={20} /></button>
+        </div>
+        <div className="mt-5 grid gap-3 md:grid-cols-3">
+          <MetricCard label="Study streak" value="2 days" detail="Current streak" />
+          <MetricCard label="Completed papers" value={stats.completedCount} detail="Across subjects" accent="text-emerald-200" />
+          <MetricCard label="Mistakes count" value={mistakes.length} detail="Saved reviews" accent="text-rose-200" />
+          <MetricCard label="Perfected topics" value="0" detail="Coming soon" accent="text-violet-200" />
+          <MetricCard label="Selected subjects" value={subjects.length} detail={subjects.map((item) => item.name).join(", ") || "None"} accent="text-cyan-200" />
+          <MetricCard label="Refer a friend" value="dojo.link/ref" detail="Share A-Level Dojo" accent="text-yellow-200" />
+        </div>
+        <button onClick={onLogout} className="mt-5 inline-flex items-center gap-2 rounded-2xl bg-rose-500 px-5 py-3 text-sm font-black text-white">
+          <LogOut size={16} /> Log out
         </button>
       </div>
     </div>
@@ -1030,8 +1544,12 @@ function TopicTestsPanel({ subject, user, onRequireLogin }) {
     </div>
   );
 }
-function SubjectPagePreview({ subject, onBack, user, onRequireLogin }) {
-  const [section, setSection] = useState("overview");
+function SubjectPagePreview({ subject, onBack, user, onRequireLogin, initialSection = "overview" }) {
+  const [section, setSection] = useState(initialSection);
+
+  useEffect(() => {
+    setSection(initialSection);
+  }, [initialSection, subject.id]);
 
   const cards = [
     [FileText, "Past papers", "Question papers, mark schemes, PDF edit, downloads", "pastpapers"],
@@ -1158,30 +1676,30 @@ export default function Dashboard({
   onGoHome = () => {},
 }) {
   const [selectedIds, setSelectedIds] = useState(() =>
-    readStorage("alevel-dojo-selected-subjects", ["physics", "computer-science", "maths"])
+    readStorage("alevel-dojo-selected-subjects", [])
   );
-  const [modalOpen, setModalOpen] = useState(false);
-  const [search, setSearch] = useState("");
+  const [draftSelectedIds, setDraftSelectedIds] = useState(() =>
+    readStorage("alevel-dojo-selected-subjects", [])
+  );
+  const [loadingSubjects, setLoadingSubjects] = useState(Boolean(user));
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [activeView, setActiveView] = useState("dashboard");
   const [activeSubjectId, setActiveSubjectId] = useState(null);
-function requireLogin(action) {
-  if (!user) {
-    onRequireLogin();
-    return;
-  }
+  const [subjectSection, setSubjectSection] = useState("overview");
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [upgradeOpen, setUpgradeOpen] = useState(false);
+  const [mistakes, setMistakes] = useState(() => readStorage("alevel-dojo-mistakes", []));
 
-  action();
-}
   const subjects = allSubjects();
+
   useEffect(() => {
     async function loadUserSubjects() {
+      setLoadingSubjects(Boolean(user));
       if (!user) {
-        setSelectedIds(
-          readStorage("alevel-dojo-selected-subjects", [
-            "physics",
-            "computer-science",
-            "maths",
-          ])
-        );
+        const ids = readStorage("alevel-dojo-selected-subjects", []);
+        setSelectedIds(ids);
+        setDraftSelectedIds(ids);
+        setLoadingSubjects(false);
         return;
       }
 
@@ -1192,225 +1710,221 @@ function requireLogin(action) {
 
       if (error) {
         console.error(error);
+        const ids = readStorage("alevel-dojo-selected-subjects", []);
+        setSelectedIds(ids);
+        setDraftSelectedIds(ids);
+        setLoadingSubjects(false);
         return;
       }
 
       const ids = data.map((item) => item.subject_id);
       setSelectedIds(ids);
+      setDraftSelectedIds(ids);
       writeStorage("alevel-dojo-selected-subjects", ids);
+      setLoadingSubjects(false);
     }
 
     loadUserSubjects();
   }, [user]);
+
+  useEffect(() => {
+    writeStorage("alevel-dojo-mistakes", mistakes);
+  }, [mistakes]);
+
   const activeSubjects = subjects.filter((subject) => selectedIds.includes(subject.id));
   const activeSubject = subjects.find((subject) => subject.id === activeSubjectId) || null;
 
-  const sidebarSubjects = useMemo(() => {
-    const base = activeSubjects.length > 0 ? activeSubjects : subjects;
-    return base.filter((subject) =>
-      `${subject.name} ${subject.board}`.toLowerCase().includes(search.toLowerCase())
+  const stats = {
+    completedCount:
+      readStorage("alevel-dojo-completed-papers", []).length +
+      readStorage("alevel-dojo-completed-topic-tests", []).length,
+    savedCount:
+      readStorage("alevel-dojo-favourites", []).length +
+      readStorage("alevel-dojo-saved-topic-tests", []).length,
+    mistakesOpen: mistakes.filter((mistake) => !mistake.fixed).length,
+  };
+
+  const upcomingExams = examDates
+    .filter((exam) =>
+      activeSubjects.some(
+        (subject) => subject.name === exam.subject && subject.board === exam.board
+      )
+    )
+    .sort((a, b) => new Date(a.date) - new Date(b.date));
+
+  function toggleDraftSubject(id) {
+    setDraftSelectedIds((current) =>
+      current.includes(id)
+        ? current.filter((item) => item !== id)
+        : [...current, id]
     );
-  }, [search, activeSubjects, subjects]);
+  }
 
-async function toggleSubject(id) {
-  const subject = subjects.find((item) => item.id === id);
-  if (!subject) return;
+  async function saveSubjectChoices() {
+    setSelectedIds(draftSelectedIds);
+    writeStorage("alevel-dojo-selected-subjects", draftSelectedIds);
 
-  const alreadySelected = selectedIds.includes(id);
+    if (!user) return;
 
-  const nextIds = alreadySelected
-    ? selectedIds.filter((item) => item !== id)
-    : [...selectedIds, id];
-
-  setSelectedIds(nextIds);
-  writeStorage("alevel-dojo-selected-subjects", nextIds);
-
-  // If the student is logged in, also save the subject choices to Supabase.
-  // If they are logged out, the choice is only kept locally for now.
-  if (!user) return;
-
-  if (alreadySelected) {
-    const { error } = await supabase
+    const { error: deleteError } = await supabase
       .from("user_subjects")
       .delete()
-      .eq("user_id", user.id)
-      .eq("subject_id", id);
+      .eq("user_id", user.id);
 
-    if (error) {
-      console.error(error);
-      alert(error.message);
+    if (deleteError) {
+      console.error(deleteError);
+      alert(deleteError.message);
+      return;
     }
-  } else {
-    const { error } = await supabase.from("user_subjects").upsert({
-      user_id: user.id,
-      subject_id: subject.id,
-      subject_name: subject.name,
-      board: subject.board,
-    });
 
+    const rows = draftSelectedIds
+      .map((id) => subjects.find((subject) => subject.id === id))
+      .filter(Boolean)
+      .map((subject) => ({
+        user_id: user.id,
+        subject_id: subject.id,
+        subject_name: subject.name,
+        board: subject.board,
+      }));
+
+    if (rows.length === 0) return;
+
+    const { error } = await supabase.from("user_subjects").upsert(rows);
     if (error) {
       console.error(error);
       alert(error.message);
     }
   }
-}
 
- return (
-  <div className="min-h-screen bg-[#060816] text-white">
-    <Watermark />
+  function openSubject(id, section = "overview") {
+    setActiveSubjectId(id);
+    setSubjectSection(section);
+    setActiveView(section === "topictests" ? "topictests" : section === "pastpapers" ? "pastpapers" : "subject");
+  }
+
+  function selectView(view) {
+    setActiveSubjectId(null);
+    setActiveView(view);
+
+    if ((view === "pastpapers" || view === "topictests") && activeSubjects[0]) {
+      openSubject(activeSubjects[0].id, view);
+    }
+  }
+
+  async function handleLogout() {
+    await supabase.auth.signOut();
+    setProfileOpen(false);
+  }
+
+  if (loadingSubjects) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#060816] text-white">
+        <Watermark />
+        <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-8 text-center">
+          <p className="text-sm font-black uppercase tracking-[0.22em] text-cyan-200">A-Level Dojo</p>
+          <p className="mt-3 text-white/55">Loading your dashboard...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (user && selectedIds.length === 0) {
+    return (
+      <SubjectSetupPage
+        selectedIds={draftSelectedIds}
+        onToggle={toggleDraftSubject}
+        onSave={saveSubjectChoices}
+      />
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-[#060816] text-white">
+      <Watermark />
       <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_12%_8%,rgba(255,92,82,0.11),transparent_26%),radial-gradient(circle_at_88%_10%,rgba(124,58,237,0.14),transparent_28%),radial-gradient(circle_at_72%_86%,rgba(34,211,238,0.06),transparent_24%)]" />
 
-      <SubjectSetupModal
-        open={modalOpen}
-        onClose={() => setModalOpen(false)}
-        selectedIds={selectedIds}
-        onToggle={toggleSubject}
+      <UpgradeModal open={upgradeOpen} onClose={() => setUpgradeOpen(false)} />
+      <ProfileModal
+        open={profileOpen}
+        onClose={() => setProfileOpen(false)}
+        user={user}
+        subjects={activeSubjects}
+        stats={stats}
+        mistakes={mistakes}
+        onLogout={handleLogout}
       />
 
       <div className="relative z-10 flex min-h-screen">
-        <aside className="hidden w-[370px] shrink-0 border-r border-white/10 bg-slate-950/75 p-5 backdrop-blur-xl lg:block">
-          <div className="mb-6 flex items-center justify-between">
-            <Logo onGoHome={onGoHome} />
-            <button className="rounded-xl border border-white/10 p-2.5 text-white/45 hover:bg-white/[0.05]">
-              <Settings2 size={18} />
-            </button>
-          </div>
-
-          <button
-            onClick={() => setActiveSubjectId(null)}
-            className={`mb-4 w-full rounded-2xl border p-4 text-left transition ${
-              !activeSubject
-                ? "border-cyan-300/50 bg-cyan-300/10"
-                : "border-white/10 bg-white/[0.035] hover:bg-white/[0.06]"
-            }`}
-          >
-            <p className="flex items-center gap-2 text-sm font-black text-white">
-              <Home size={16} /> Dashboard
-            </p>
-            <p className="mt-1 text-xs leading-5 text-white/40">Overview and selected subjects</p>
-          </button>
-
-          <div className="mb-4 rounded-2xl border border-white/10 bg-white/[0.035] p-3">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" size={17} />
-              <input
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder="Search my subjects..."
-                className="w-full rounded-xl border border-white/10 bg-slate-950 px-10 py-3 text-sm text-white outline-none placeholder:text-white/30 focus:border-cyan-300"
-              />
-            </div>
-            <button
-              onClick={() => setModalOpen(true)}
-              className="mt-3 w-full rounded-xl bg-white/[0.06] px-4 py-3 text-sm font-black text-white/70 hover:bg-white/[0.1]"
-            >
-              Change subjects
-            </button>
-          </div>
-
-          <div className="space-y-3">
-            {sidebarSubjects.map((subject) => (
-              <SidebarSubject
-                key={subject.id}
-                subject={subject}
-                active={activeSubjectId === subject.id}
-                onOpen={() => setActiveSubjectId(subject.id)}
-              />
-            ))}
-          </div>
-        </aside>
+        <DashboardShellSidebar
+          collapsed={sidebarCollapsed}
+          onToggleCollapsed={() => setSidebarCollapsed(!sidebarCollapsed)}
+          activeView={activeView}
+          onSelectView={selectView}
+          activeSubjects={activeSubjects}
+          onOpenSubject={openSubject}
+          onOpenProfile={() => setProfileOpen(true)}
+          onGoHome={onGoHome}
+        />
 
         <main className="flex-1 px-5 py-6 md:px-8 lg:px-10">
           <header className="mb-6 flex flex-wrap items-center justify-between gap-4 rounded-3xl border border-white/10 bg-white/[0.035] px-5 py-4 backdrop-blur-xl">
             <div>
               <p className="text-sm text-white/40">Welcome back</p>
-              <h1 className="text-2xl font-black tracking-tight text-white">Your revision dashboard</h1>
+              <h1 className="text-2xl font-black tracking-tight text-white">
+                {activeSubject ? `${activeSubject.name} workspace` : "Your revision dashboard"}
+              </h1>
             </div>
 
             <div className="flex flex-wrap items-center gap-3">
-              <div className="rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-white/55">
-                {activeSubjects.length} subjects selected
-              </div>
               <button
-                onClick={() => setModalOpen(true)}
-                className="rounded-2xl bg-gradient-to-r from-rose-400 to-violet-500 px-5 py-3 text-sm font-black text-white shadow-lg shadow-rose-500/15"
+                onClick={() => setProfileOpen(true)}
+                className="rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm font-black text-white/70 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-white/[0.07]"
               >
-                Edit subjects
+                Profile
+              </button>
+              <button
+                onClick={() => setUpgradeOpen(true)}
+                className="rounded-2xl bg-gradient-to-r from-rose-400 to-violet-500 px-5 py-3 text-sm font-black text-white shadow-lg shadow-rose-500/15 transition-all duration-200 ease-out hover:-translate-y-0.5"
+              >
+                Upgrade
               </button>
             </div>
           </header>
 
           {activeSubject ? (
             <SubjectPagePreview
-                subject={activeSubject}
-                onBack={() => setActiveSubjectId(null)}
-                user={user}
-                onRequireLogin={onRequireLogin}
-                />
+              subject={activeSubject}
+              onBack={() => {
+                setActiveSubjectId(null);
+                setSubjectSection("overview");
+                setActiveView("dashboard");
+              }}
+              user={user}
+              onRequireLogin={onRequireLogin}
+              initialSection={subjectSection}
+            />
+          ) : activeView === "calendar" ? (
+            <ExamCalendarPanel exams={upcomingExams} />
+          ) : activeView === "mistakes" ? (
+            <MistakesTrackerPanel mistakes={mistakes} setMistakes={setMistakes} />
+          ) : activeView === "boundaries" ? (
+            <GradeBoundariesPanel />
+          ) : activeView === "ai" ? (
+            <AiTutorPanel onUpgrade={() => setUpgradeOpen(true)} />
+          ) : activeView === "settings" ? (
+            <SubjectSetupPage
+              selectedIds={draftSelectedIds}
+              onToggle={toggleDraftSubject}
+              onSave={saveSubjectChoices}
+            />
           ) : (
-            <>
-              {activeSubjects.length === 0 ? (
-                <EmptySubjectRequest onOpenModal={() => setModalOpen(true)} />
-              ) : (
-                <>
-                  <section className="mb-6 rounded-3xl border border-white/10 bg-white/[0.035] p-6">
-                    <div className="flex flex-wrap items-start justify-between gap-4">
-                      <div>
-                        <p className="mb-2 flex items-center gap-2 text-xs font-black uppercase tracking-[0.22em] text-cyan-200">
-                          <Sparkles size={15} /> Simple dashboard
-                        </p>
-                        <h2 className="text-3xl font-black tracking-tight text-white">Start where you left off.</h2>
-                        <p className="mt-2 max-w-2xl text-sm leading-7 text-white/50">
-                          Your chosen subjects appear here. Open a subject to access papers, notes, syllabus, flashcards, mock mode, and AI tutor tools.
-                        </p>
-                      </div>
-
-                      <button
-                        onClick={() => setModalOpen(true)}
-                        className="rounded-xl border border-white/10 bg-white/[0.05] px-4 py-2.5 text-sm font-bold text-white/70 hover:bg-white/[0.08]"
-                      >
-                        Change subjects
-                      </button>
-                    </div>
-                  </section>
-
-                  <section className="mb-6">
-                    <div className="mb-4 flex items-center justify-between gap-3">
-                      <h2 className="text-xl font-black text-white">My subjects</h2>
-                      <p className="text-sm text-white/40">Clean, compact, and personal</p>
-                    </div>
-
-                    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                      {activeSubjects.map((subject) => (
-                        <ActiveSubjectCard
-                          key={subject.id}
-                          subject={subject}
-                          onOpen={() => setActiveSubjectId(subject.id)}
-                        />
-                      ))}
-                    </div>
-                  </section>
-
-                  <section className="grid gap-4 md:grid-cols-3">
-                    <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-5">
-                      <p className="text-sm font-black text-cyan-200">Next paper</p>
-                      <p className="mt-2 text-lg font-black text-white">Physics Unit 3</p>
-                      <p className="mt-1 text-sm text-white/40">Continue your last opened paper.</p>
-                    </div>
-                    <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-5">
-                      <p className="text-sm font-black text-violet-200">Weak topics</p>
-                      <p className="mt-2 text-lg font-black text-white">Fields + Mechanics</p>
-                      <p className="mt-1 text-sm text-white/40">Combine topics for targeted practice.</p>
-                    </div>
-                    <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-5">
-                      <p className="text-sm font-black text-rose-200">Revision tools</p>
-                      <p className="mt-2 text-lg font-black text-white">AI quiz ready</p>
-                      <p className="mt-1 text-sm text-white/40">Ask, revise, visualize, and test yourself.</p>
-                    </div>
-                  </section>
-                </>
-              )}
-            </>
+            <DashboardHome
+              activeSubjects={activeSubjects}
+              onOpenSubject={openSubject}
+              stats={stats}
+              upcomingExams={upcomingExams}
+              onSelectView={selectView}
+            />
           )}
         </main>
       </div>

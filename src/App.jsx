@@ -7,6 +7,7 @@ import PdfViewer from "./PdfViewer";
 import HomePage from "./HomePage";
 import LockedActionModal from "./LockedActionModal";
 import Dashboard from "./Dashboard";
+import PublicBrowsePage from "./PublicBrowsePage";
 
 const subjects = [
   {
@@ -301,7 +302,14 @@ const [selectedSubject, setSelectedSubject] = useState(subjects[0]);
   const [aiAnswer, setAiAnswer] = useState("");
   const [favourites, setFavourites] = useState(() => readStorage("alevel-dojo-favourites", []));
   const [recent, setRecent] = useState(() => readStorage("alevel-dojo-recent", []));
-  const [progress, setProgress] = useState(() => readStorage("alevel-dojo-progress", {}));
+const [progress, setProgress] = useState(() => readStorage("alevel-dojo-progress", {}));
+
+useEffect(() => {
+  if (page === "publicBrowse" && user) {
+    setPage("library");
+    window.scrollTo(0, 0);
+  }
+}, [page, user]);
 
   const selectedSubjectBoard = selectedSubject.board;
 
@@ -924,10 +932,20 @@ if (page === "home") {
     <>
     <HomePage
       user={user}
+      email={email}
+      setEmail={setEmail}
+      password={password}
+      setPassword={setPassword}
+      signIn={signIn}
+      signUp={signUp}
       onOpenAuth={() => setShowAuthModal(true)}
       onLogout={logOut}
       onBrowsePapers={() => {
-        setPage("library");
+        if (user) {
+          setPage("library");
+        } else {
+          setPage("publicBrowse");
+        }
         window.scrollTo(0, 0);
       }}
     />
@@ -951,6 +969,38 @@ if (page === "home") {
 }
 function startFloatingMock() {
   setShowFloatingMock(true);
+}
+if (page === "publicBrowse") {
+  return (
+    <>
+      <PublicBrowsePage
+        user={user}
+        onGoHome={() => {
+          setPage("home");
+          window.scrollTo(0, 0);
+        }}
+        onOpenAuth={() => setShowAuthModal(true)}
+        onRequireLogin={() => setShowLockedModal(true)}
+      />
+
+      <AuthModal
+        showAuthModal={showAuthModal}
+        setShowAuthModal={setShowAuthModal}
+        email={email}
+        setEmail={setEmail}
+        password={password}
+        setPassword={setPassword}
+        signIn={signIn}
+        signUp={signUp}
+      />
+
+      <LockedActionModal
+        showLockedModal={showLockedModal}
+        setShowLockedModal={setShowLockedModal}
+        setShowAuthModal={setShowAuthModal}
+      />
+    </>
+  );
 }
 if (page === "library") {
   return (
