@@ -172,6 +172,23 @@ function allSubjects() {
   );
 }
 
+function profileSubjectsToIds(profileSubjects = [], subjects = []) {
+  return profileSubjects
+    .map((item) => {
+      if (typeof item === "string") return item;
+
+      const subjectName = item.subject || item.name || item.subject_name;
+      const board = item.board;
+
+      const match = subjects.find(
+        (subject) => subject.name === subjectName && subject.board === board
+      );
+
+      return match?.id;
+    })
+    .filter(Boolean);
+}
+
 
 function Logo({ onGoHome = () => {} }) {
   return (
@@ -420,8 +437,10 @@ function SubjectSetupPage({ selectedIds, onToggle, onSave }) {
 }
 
 function DashboardShellSidebar({
-  collapsed,
-  onToggleCollapsed,
+  open,
+  onOpen,
+  onClose,
+  onToggleOpen,
   activeView,
   onSelectView,
   activeSubjects,
@@ -442,15 +461,19 @@ function DashboardShellSidebar({
   ];
 
   return (
-    <aside className={`${collapsed ? "w-[76px]" : "w-[292px]"} hidden shrink-0 border-r border-white/10 bg-slate-950/78 p-4 backdrop-blur-xl transition-all duration-200 lg:block`}>
-      <div className={`mb-5 flex items-center ${collapsed ? "justify-center" : "justify-between"}`}>
-        {!collapsed && <Logo onGoHome={onGoHome} />}
+    <aside
+      onMouseEnter={onOpen}
+      onMouseLeave={onClose}
+      className={`${open ? "w-[292px]" : "w-[76px]"} hidden shrink-0 border-r border-white/10 bg-slate-950/78 p-4 backdrop-blur-xl transition-all duration-200 ease-out lg:block`}
+    >
+      <div className={`mb-5 flex items-center ${open ? "justify-between" : "justify-center"}`}>
+        {open && <Logo onGoHome={onGoHome} />}
         <button
-          onClick={onToggleCollapsed}
+          onClick={onToggleOpen}
           className="rounded-xl border border-white/10 bg-white/[0.035] p-2.5 text-white/55 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-white/[0.07]"
-          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          title={open ? "Collapse sidebar" : "Expand sidebar"}
         >
-          {collapsed ? <Menu size={18} /> : <ChevronLeft size={18} />}
+          {open ? <ChevronLeft size={18} /> : <Menu size={18} />}
         </button>
       </div>
 
@@ -463,16 +486,16 @@ function DashboardShellSidebar({
               activeView === id
                 ? "bg-cyan-300/10 text-cyan-100 ring-1 ring-cyan-300/25"
                 : "text-white/55 hover:bg-white/[0.055] hover:text-white"
-            } ${collapsed ? "justify-center" : ""}`}
+            } ${open ? "" : "justify-center"}`}
             title={label}
           >
             <Icon size={18} />
-            {!collapsed && <span>{label}</span>}
+            {open && <span>{label}</span>}
           </button>
         ))}
       </nav>
 
-      {!collapsed && (
+      {open && (
         <div className="mt-7 border-t border-white/10 pt-5">
           <p className="mb-3 text-xs font-black uppercase tracking-[0.22em] text-white/32">My subjects</p>
           <div className="space-y-2">
@@ -488,6 +511,15 @@ function DashboardShellSidebar({
             ))}
           </div>
         </div>
+      )}
+
+      {open && (
+        <button
+          onClick={() => onSelectView("ai")}
+          className="mt-5 w-full rounded-2xl bg-gradient-to-r from-rose-400 to-violet-500 px-4 py-3 text-sm font-black text-white shadow-lg shadow-rose-500/15 transition-all duration-200 ease-out hover:-translate-y-0.5"
+        >
+          Upgrade
+        </button>
       )}
     </aside>
   );
@@ -539,11 +571,24 @@ function DashboardHome({ activeSubjects, onOpenSubject, stats, upcomingExams, on
           <h2 className="text-xl font-black text-white">My subjects</h2>
           <p className="text-sm text-white/40">Open a card for papers and topic tests</p>
         </div>
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {activeSubjects.map((subject) => (
-            <ActiveSubjectCard key={subject.id} subject={subject} onOpen={() => onOpenSubject(subject.id)} />
-          ))}
-        </div>
+        {activeSubjects.length === 0 ? (
+          <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-6">
+            <p className="font-black text-white">No subjects selected yet.</p>
+            <p className="mt-2 text-sm text-white/45">Go to settings to add subjects.</p>
+            <button
+              onClick={() => onSelectView("settings")}
+              className="mt-4 rounded-2xl border border-white/10 bg-white/[0.05] px-4 py-2.5 text-sm font-black text-white/75 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-white/[0.08]"
+            >
+              Open settings
+            </button>
+          </div>
+        ) : (
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {activeSubjects.map((subject) => (
+              <ActiveSubjectCard key={subject.id} subject={subject} onOpen={() => onOpenSubject(subject.id)} />
+            ))}
+          </div>
+        )}
       </section>
 
       <section className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
@@ -818,6 +863,111 @@ function ProfileModal({ open, onClose, user, subjects, stats, mistakes, onLogout
         </button>
       </div>
     </div>
+  );
+}
+
+function ProfileSettingsPanel({
+  profile,
+  allSubjectsList,
+  draftSelectedIds,
+  onToggleSubject,
+  onSaveSubjects,
+  onSaveProfile,
+}) {
+  const [form, setForm] = useState({
+    full_name: profile?.full_name || "",
+    year_group: profile?.year_group || "Year 13",
+    target_grade: profile?.target_grade || "A",
+    predicted_grade: profile?.predicted_grade || "",
+  });
+
+  async function saveAll() {
+    const selectedSubjects = allSubjectsList
+      .filter((subject) => draftSelectedIds.includes(subject.id))
+      .map((subject) => ({ board: subject.board, subject: subject.name }));
+
+    await onSaveProfile({
+      ...profile,
+      ...form,
+      subjects: selectedSubjects,
+      selected_subjects: selectedSubjects,
+      predicted_grade: form.predicted_grade || null,
+      onboarding_completed: true,
+    });
+    await onSaveSubjects();
+  }
+
+  return (
+    <section className="rounded-3xl border border-white/10 bg-white/[0.035] p-6">
+      <div className="mb-6">
+        <h2 className="text-xl font-black text-white">Settings</h2>
+        <p className="mt-1 text-sm text-white/42">Edit your onboarding details, profile, and selected subjects.</p>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2">
+        <input
+          value={form.full_name}
+          onChange={(event) => setForm({ ...form, full_name: event.target.value })}
+          placeholder="Name"
+          className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-4 text-white outline-none placeholder:text-white/30 focus:border-cyan-300"
+        />
+        <select
+          value={form.year_group}
+          onChange={(event) => setForm({ ...form, year_group: event.target.value })}
+          className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-4 text-white outline-none focus:border-cyan-300"
+        >
+          {["Year 12", "Year 13", "Private candidate", "Other"].map((item) => <option key={item}>{item}</option>)}
+        </select>
+        <select
+          value={form.target_grade}
+          onChange={(event) => setForm({ ...form, target_grade: event.target.value })}
+          className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-4 text-white outline-none focus:border-cyan-300"
+        >
+          {["E", "D", "C", "B", "A", "A*"].map((item) => <option key={item}>{item}</option>)}
+        </select>
+        <select
+          value={form.predicted_grade || ""}
+          onChange={(event) => setForm({ ...form, predicted_grade: event.target.value })}
+          className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-4 text-white outline-none focus:border-cyan-300"
+        >
+          <option value="">Predicted grade (optional)</option>
+          {["E", "D", "C", "B", "A", "A*"].map((item) => <option key={item}>{item}</option>)}
+        </select>
+      </div>
+
+      <div className="mt-8 space-y-6">
+        {subjectGroups.map((group) => (
+          <section key={group.board}>
+            <h3 className="mb-3 font-black text-white">{group.board}</h3>
+            <div className="flex flex-wrap gap-2">
+              {group.subjects.map((subject) => {
+                const selected = draftSelectedIds.includes(subject.id);
+                return (
+                  <button
+                    key={subject.id}
+                    onClick={() => onToggleSubject(subject.id)}
+                    className={`rounded-full border px-4 py-2 text-sm font-black transition-all duration-200 ease-out hover:-translate-y-0.5 ${
+                      selected
+                        ? "border-cyan-300/40 bg-cyan-300/10 text-cyan-100"
+                        : "border-white/10 bg-white/[0.035] text-white/55 hover:bg-white/[0.06]"
+                    }`}
+                  >
+                    {subject.name}
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+        ))}
+      </div>
+
+      <button
+        onClick={saveAll}
+        className="mt-8 rounded-2xl bg-gradient-to-r from-rose-400 to-violet-500 px-6 py-3 text-sm font-black text-white"
+      >
+        Save settings
+      </button>
+    </section>
   );
 }
 function PastPapersPanel({ subject, user, onRequireLogin }) {
@@ -1672,17 +1822,21 @@ function SubjectPagePreview({ subject, onBack, user, onRequireLogin, initialSect
 
 export default function Dashboard({
   user,
+  profile = null,
+  onSaveProfile = async () => {},
   onRequireLogin = () => {},
   onGoHome = () => {},
 }) {
+  const subjects = allSubjects();
   const [selectedIds, setSelectedIds] = useState(() =>
-    readStorage("alevel-dojo-selected-subjects", [])
+    profileSubjectsToIds(profile?.subjects || profile?.selected_subjects || [], subjects)
   );
   const [draftSelectedIds, setDraftSelectedIds] = useState(() =>
-    readStorage("alevel-dojo-selected-subjects", [])
+    profileSubjectsToIds(profile?.subjects || profile?.selected_subjects || [], subjects)
   );
-  const [loadingSubjects, setLoadingSubjects] = useState(Boolean(user));
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [dashboardProfile, setDashboardProfile] = useState(profile);
+  const [loadingSubjects, setLoadingSubjects] = useState(Boolean(user && !profile));
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeView, setActiveView] = useState("dashboard");
   const [activeSubjectId, setActiveSubjectId] = useState(null);
   const [subjectSection, setSubjectSection] = useState("overview");
@@ -1690,42 +1844,49 @@ export default function Dashboard({
   const [upgradeOpen, setUpgradeOpen] = useState(false);
   const [mistakes, setMistakes] = useState(() => readStorage("alevel-dojo-mistakes", []));
 
-  const subjects = allSubjects();
-
   useEffect(() => {
-    async function loadUserSubjects() {
-      setLoadingSubjects(Boolean(user));
+    async function loadDashboardProfile() {
       if (!user) {
-        const ids = readStorage("alevel-dojo-selected-subjects", []);
+        const ids = profileSubjectsToIds(profile?.subjects || profile?.selected_subjects || [], subjects);
+        setDashboardProfile(profile);
         setSelectedIds(ids);
         setDraftSelectedIds(ids);
         setLoadingSubjects(false);
         return;
       }
 
+      if (profile) {
+        const ids = profileSubjectsToIds(profile.subjects || profile.selected_subjects || [], subjects);
+        setDashboardProfile(profile);
+        setSelectedIds(ids);
+        setDraftSelectedIds(ids);
+        setLoadingSubjects(false);
+        return;
+      }
+
+      setLoadingSubjects(true);
+
       const { data, error } = await supabase
-        .from("user_subjects")
-        .select("subject_id")
-        .eq("user_id", user.id);
+        .from("profiles")
+        .select("*")
+        .eq("id", user.id)
+        .maybeSingle();
 
       if (error) {
         console.error(error);
-        const ids = readStorage("alevel-dojo-selected-subjects", []);
-        setSelectedIds(ids);
-        setDraftSelectedIds(ids);
         setLoadingSubjects(false);
         return;
       }
 
-      const ids = data.map((item) => item.subject_id);
+      const ids = profileSubjectsToIds(data?.subjects || data?.selected_subjects || [], subjects);
+      setDashboardProfile(data);
       setSelectedIds(ids);
       setDraftSelectedIds(ids);
-      writeStorage("alevel-dojo-selected-subjects", ids);
       setLoadingSubjects(false);
     }
 
-    loadUserSubjects();
-  }, [user]);
+    loadDashboardProfile();
+  }, [user, profile]);
 
   useEffect(() => {
     writeStorage("alevel-dojo-mistakes", mistakes);
@@ -1762,38 +1923,6 @@ export default function Dashboard({
 
   async function saveSubjectChoices() {
     setSelectedIds(draftSelectedIds);
-    writeStorage("alevel-dojo-selected-subjects", draftSelectedIds);
-
-    if (!user) return;
-
-    const { error: deleteError } = await supabase
-      .from("user_subjects")
-      .delete()
-      .eq("user_id", user.id);
-
-    if (deleteError) {
-      console.error(deleteError);
-      alert(deleteError.message);
-      return;
-    }
-
-    const rows = draftSelectedIds
-      .map((id) => subjects.find((subject) => subject.id === id))
-      .filter(Boolean)
-      .map((subject) => ({
-        user_id: user.id,
-        subject_id: subject.id,
-        subject_name: subject.name,
-        board: subject.board,
-      }));
-
-    if (rows.length === 0) return;
-
-    const { error } = await supabase.from("user_subjects").upsert(rows);
-    if (error) {
-      console.error(error);
-      alert(error.message);
-    }
   }
 
   function openSubject(id, section = "overview") {
@@ -1828,16 +1957,6 @@ export default function Dashboard({
     );
   }
 
-  if (user && selectedIds.length === 0) {
-    return (
-      <SubjectSetupPage
-        selectedIds={draftSelectedIds}
-        onToggle={toggleDraftSubject}
-        onSave={saveSubjectChoices}
-      />
-    );
-  }
-
   return (
     <div className="min-h-screen bg-[#060816] text-white">
       <Watermark />
@@ -1856,8 +1975,10 @@ export default function Dashboard({
 
       <div className="relative z-10 flex min-h-screen">
         <DashboardShellSidebar
-          collapsed={sidebarCollapsed}
-          onToggleCollapsed={() => setSidebarCollapsed(!sidebarCollapsed)}
+          open={sidebarOpen}
+          onOpen={() => setSidebarOpen(true)}
+          onClose={() => setSidebarOpen(false)}
+          onToggleOpen={() => setSidebarOpen((current) => !current)}
           activeView={activeView}
           onSelectView={selectView}
           activeSubjects={activeSubjects}
@@ -1867,6 +1988,24 @@ export default function Dashboard({
         />
 
         <main className="flex-1 px-5 py-6 md:px-8 lg:px-10">
+          <div className="mb-4 flex items-center justify-between rounded-3xl border border-white/10 bg-white/[0.035] px-4 py-3 lg:hidden">
+            <Logo onGoHome={onGoHome} />
+            <select
+              value={activeView}
+              onChange={(event) => selectView(event.target.value)}
+              className="rounded-2xl border border-white/10 bg-slate-950 px-3 py-2 text-sm font-bold text-white outline-none"
+            >
+              <option value="dashboard">Dashboard</option>
+              <option value="pastpapers">Past papers</option>
+              <option value="topictests">Topic tests</option>
+              <option value="calendar">Exam calendar</option>
+              <option value="mistakes">Mistakes tracker</option>
+              <option value="boundaries">Grade boundaries</option>
+              <option value="ai">AI tutor</option>
+              <option value="settings">Settings</option>
+            </select>
+          </div>
+
           <header className="mb-6 flex flex-wrap items-center justify-between gap-4 rounded-3xl border border-white/10 bg-white/[0.035] px-5 py-4 backdrop-blur-xl">
             <div>
               <p className="text-sm text-white/40">Welcome back</p>
@@ -1912,10 +2051,13 @@ export default function Dashboard({
           ) : activeView === "ai" ? (
             <AiTutorPanel onUpgrade={() => setUpgradeOpen(true)} />
           ) : activeView === "settings" ? (
-            <SubjectSetupPage
-              selectedIds={draftSelectedIds}
-              onToggle={toggleDraftSubject}
-              onSave={saveSubjectChoices}
+            <ProfileSettingsPanel
+              profile={dashboardProfile}
+              allSubjectsList={subjects}
+              draftSelectedIds={draftSelectedIds}
+              onToggleSubject={toggleDraftSubject}
+              onSaveSubjects={saveSubjectChoices}
+              onSaveProfile={onSaveProfile}
             />
           ) : (
             <DashboardHome

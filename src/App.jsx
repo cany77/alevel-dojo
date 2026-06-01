@@ -8,6 +8,7 @@ import HomePage from "./HomePage";
 import LockedActionModal from "./LockedActionModal";
 import Dashboard from "./Dashboard";
 import PublicBrowsePage from "./PublicBrowsePage";
+import OnboardingFlow from "./OnboardingFlow";
 
 const subjects = [
   {
@@ -144,6 +145,8 @@ export default function ALevelDojo() {
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showLockedModal, setShowLockedModal] = useState(false);
   const [showFloatingMock, setShowFloatingMock] = useState(false);
+  const [profile, setProfile] = useState(null);
+  const [profileLoading, setProfileLoading] = useState(false);
   async function loadCompletedPapers(userId) {
   const { data, error } = await supabase
     .from("completed_papers")
@@ -162,8 +165,63 @@ async function logOut() {
   await supabase.auth.signOut();
 
   setUser(null);
+  setProfile(null);
   setShowAuthModal(false);
   setShowLockedModal(false);
+}
+async function loadProfile(currentUser) {
+  if (!currentUser) {
+    setProfile(null);
+    return null;
+  }
+
+  setProfileLoading(true);
+
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("*")
+    .eq("id", currentUser.id)
+    .maybeSingle();
+
+  if (error) {
+    console.error(error);
+    setProfileLoading(false);
+    return null;
+  }
+
+  if (data) {
+    setProfile(data);
+    setProfileLoading(false);
+    return data;
+  }
+
+  const fallbackProfile = {
+    id: currentUser.id,
+    email: currentUser.email,
+    full_name: currentUser.user_metadata?.full_name || "",
+    name: currentUser.user_metadata?.full_name || "",
+    subjects: [],
+    selected_subjects: [],
+    ai_profile: {},
+    onboarding_completed: false,
+  };
+
+  const { data: insertedProfile, error: insertError } = await supabase
+    .from("profiles")
+    .upsert(fallbackProfile)
+    .select()
+    .single();
+
+  if (insertError) {
+    console.error(insertError);
+    setProfile(fallbackProfile);
+    setProfileLoading(false);
+    return fallbackProfile;
+  }
+
+  setProfile(insertedProfile);
+  setProfileLoading(false);
+  return insertedProfile;
 }
  useEffect(() => {
   async function getSession() {
@@ -173,6 +231,7 @@ async function logOut() {
     setUser(currentUser);
 
     if (currentUser) {
+      loadProfile(currentUser);
       loadCompletedPapers(currentUser.id);
     }
   }
@@ -187,7 +246,10 @@ async function logOut() {
     setUser(currentUser);
 
     if (currentUser) {
+      loadProfile(currentUser);
       loadCompletedPapers(currentUser.id);
+    } else {
+      setProfile(null);
     }
   });
 
@@ -214,20 +276,35 @@ async function logOut() {
     }
 
     if (data.user) {
-      await supabase.from("profiles").upsert({
+      const signupProfile = {
         id: data.user.id,
         email: data.user.email,
         full_name: name,
-      });
+        name,
+        subjects: [],
+        selected_subjects: [],
+        ai_profile: {},
+        onboarding_completed: false,
+      };
+
+      const { data: createdProfile, error: profileError } = await supabase
+        .from("profiles")
+        .upsert(signupProfile)
+        .select()
+        .single();
+
+      if (profileError) {
+        console.error(profileError);
+      }
 
       setUser(data.user);
+      setProfile(createdProfile || signupProfile);
     }
 
     setShowAuthModal(false);
-    setPage("home");
+    setPage("library");
     setEmail("");
     setPassword("");
-    alert("Account created");
   }
 
 async function signIn() {
@@ -251,6 +328,8 @@ async function signIn() {
     last_login_at: new Date().toISOString(),
   });
 
+  const loadedProfile = await loadProfile(signedInUser);
+
   await supabase.from("login_events").insert({
     user_id: signedInUser.id,
     email: signedInUser.email,
@@ -260,10 +339,53 @@ async function signIn() {
   setShowLockedModal(false);
   setEmail("");
   setPassword("");
+  setPage("library");
+  window.scrollTo(0, 0);
 }
 
 async function signOut() {
   await supabase.auth.signOut();
+}
+async function completeOnboarding(profileData) {
+  if (!user) return;
+
+  const normalizedSubjects = Array.isArray(profileData.subjects)
+    ? profileData.subjects
+    : Array.isArray(profileData.selected_subjects)
+      ? profileData.selected_subjects
+      : [];
+
+  const fullName = profileData.full_name || profileData.name || profile?.full_name || "";
+
+  const payload = {
+    id: user.id,
+    email: user.email,
+    ...profileData,
+    full_name: fullName,
+    name: fullName,
+    subjects: normalizedSubjects,
+    selected_subjects: normalizedSubjects,
+    ai_profile: profileData.ai_profile || {},
+    onboarding_completed: Boolean(profileData.onboarding_completed),
+    updated_at: new Date().toISOString(),
+  };
+
+  const { data, error } = await supabase
+    .from("profiles")
+    .upsert(payload)
+    .select()
+    .single();
+
+  if (error) {
+    console.error(error);
+    alert(error.message);
+    return;
+  }
+
+  setProfile(data);
+
+  setPage("library");
+  window.scrollTo(0, 0);
 }
 const [page, setPage] = useState("home");
 const [dashboardView, setDashboardView] = useState("overview");
@@ -1003,10 +1125,33 @@ if (page === "publicBrowse") {
   );
 }
 if (page === "library") {
+  if (user && profileLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#060816] text-white">
+        <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-8 text-center">
+          <p className="text-sm font-black uppercase tracking-[0.22em] text-cyan-200">A-Level Dojo</p>
+          <p className="mt-3 text-white/55">Loading your profile...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (user && !profile?.onboarding_completed) {
+    return (
+      <OnboardingFlow
+        user={user}
+        initialProfile={profile}
+        onComplete={completeOnboarding}
+      />
+    );
+  }
+
   return (
     <>
       <Dashboard
         user={user}
+        profile={profile}
+        onSaveProfile={completeOnboarding}
         onRequireLogin={() => setShowLockedModal(true)}
         onGoHome={() => {
           setPage("home");
