@@ -446,6 +446,7 @@ function DashboardShellSidebar({
   activeSubjects,
   onOpenSubject,
   onOpenProfile,
+  onOpenPricing,
   onGoHome,
 }) {
   const nav = [
@@ -515,7 +516,7 @@ function DashboardShellSidebar({
 
       {open && (
         <button
-          onClick={() => onSelectView("ai")}
+          onClick={onOpenPricing}
           className="mt-5 w-full rounded-2xl bg-gradient-to-r from-rose-400 to-violet-500 px-4 py-3 text-sm font-black text-white shadow-lg shadow-rose-500/15 transition-all duration-200 ease-out hover:-translate-y-0.5"
         >
           Upgrade
@@ -535,7 +536,7 @@ function MetricCard({ label, value, detail, accent = "text-cyan-200" }) {
   );
 }
 
-function DashboardHome({ activeSubjects, onOpenSubject, stats, upcomingExams, onSelectView }) {
+function DashboardHome({ activeSubjects, onOpenSubject, stats, upcomingExams, onSelectView, onOpenPricing }) {
   return (
     <>
       <section className="mb-6 rounded-3xl border border-white/10 bg-white/[0.035] p-6">
@@ -593,22 +594,90 @@ function DashboardHome({ activeSubjects, onOpenSubject, stats, upcomingExams, on
 
       <section className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
         <ExamCalendarPanel exams={upcomingExams.slice(0, 4)} compact />
-        <AiTutorPanel onUpgrade={() => onSelectView("ai")} compact />
+        <AiTutorPanel onUpgrade={onOpenPricing} compact />
       </section>
     </>
   );
 }
 
-function ExamCalendarPanel({ exams, compact = false }) {
+function ExamCalendarPanel({ exams, compact = false, subjects = [], onAddExam = () => {} }) {
+  const [draft, setDraft] = useState({
+    subject: subjects[0]?.name || "",
+    board: subjects[0]?.board || "",
+    paper: "",
+    date: "",
+  });
+
+  useEffect(() => {
+    if ((!draft.subject || !draft.board) && subjects[0]) {
+      setDraft((current) => ({
+        ...current,
+        subject: subjects[0].name,
+        board: subjects[0].board,
+      }));
+    }
+  }, [subjects, draft.subject, draft.board]);
+
+  function addExam(event) {
+    event.preventDefault();
+    if (!draft.subject || !draft.board || !draft.paper.trim() || !draft.date) return;
+    onAddExam({ ...draft, manual: true, id: `manual-${Date.now()}` });
+    setDraft({
+      subject: subjects[0]?.name || "",
+      board: subjects[0]?.board || "",
+      paper: "",
+      date: "",
+    });
+  }
+
   return (
     <section className="rounded-3xl border border-white/10 bg-white/[0.035] p-6">
       <div className="mb-5 flex items-center justify-between gap-3">
         <div>
           <h2 className="text-xl font-black text-white">Exam calendar</h2>
-          <p className="mt-1 text-sm text-white/42">Static timetable for selected subjects</p>
+          <p className="mt-1 text-sm text-white/42">Upcoming dates filtered to your selected subjects</p>
         </div>
         <CalendarDays className="text-cyan-200" size={22} />
       </div>
+
+      {!compact && (
+        <form onSubmit={addExam} className="mb-5 grid gap-3 rounded-2xl border border-white/10 bg-slate-950/45 p-4 md:grid-cols-[1fr_1fr_1fr_auto]">
+          <select
+            value={`${draft.board}|${draft.subject}`}
+            onChange={(event) => {
+              const [board, subject] = event.target.value.split("|");
+              setDraft({ ...draft, board, subject });
+            }}
+            className="rounded-xl border border-white/10 bg-slate-950 px-3 py-3 text-sm font-bold text-white outline-none focus:border-cyan-300"
+          >
+            {subjects.length === 0 ? (
+              <option value="">Add subjects in settings</option>
+            ) : (
+              subjects.map((subject) => (
+                <option key={subject.id} value={`${subject.board}|${subject.name}`}>
+                  {subject.name} - {subject.board}
+                </option>
+              ))
+            )}
+          </select>
+          <input
+            value={draft.paper}
+            onChange={(event) => setDraft({ ...draft, paper: event.target.value })}
+            placeholder="Paper, unit, or mock"
+            className="rounded-xl border border-white/10 bg-slate-950 px-3 py-3 text-sm text-white outline-none placeholder:text-white/30 focus:border-cyan-300"
+          />
+          <input
+            type="date"
+            value={draft.date}
+            onChange={(event) => setDraft({ ...draft, date: event.target.value })}
+            className="rounded-xl border border-white/10 bg-slate-950 px-3 py-3 text-sm text-white outline-none focus:border-cyan-300"
+          />
+          <button className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-300 px-4 py-3 text-sm font-black text-slate-950 transition-all duration-200 ease-out hover:-translate-y-0.5">
+            <Plus size={16} /> Add
+          </button>
+        </form>
+      )}
+
       <div className="space-y-3">
         {exams.length === 0 ? (
           <p className="rounded-2xl border border-white/10 bg-slate-950/45 p-4 text-sm text-white/45">
@@ -616,11 +685,16 @@ function ExamCalendarPanel({ exams, compact = false }) {
           </p>
         ) : (
           exams.map((exam) => (
-            <div key={`${exam.board}-${exam.subject}-${exam.paper}`} className="grid gap-3 rounded-2xl border border-white/10 bg-slate-950/45 p-4 md:grid-cols-[1fr_auto]">
+            <div key={exam.id || `${exam.board}-${exam.subject}-${exam.paper}-${exam.date}`} className="grid gap-3 rounded-2xl border border-white/10 bg-slate-950/45 p-4 md:grid-cols-[1fr_auto]">
               <div>
                 <p className="font-black text-white">{exam.subject}</p>
                 <p className="mt-1 text-sm text-white/42">{exam.board} - {exam.paper}</p>
-                {!compact && <p className="mt-2 text-xs font-bold text-cyan-200">{new Date(exam.date).toLocaleDateString()}</p>}
+                {!compact && (
+                  <p className="mt-2 text-xs font-bold text-cyan-200">
+                    {new Date(`${exam.date}T00:00:00`).toLocaleDateString()}
+                    {exam.manual ? " - added by you" : ""}
+                  </p>
+                )}
               </div>
               <div className="rounded-2xl bg-cyan-300/10 px-4 py-3 text-center">
                 <p className="text-2xl font-black text-cyan-100">{daysUntil(exam.date)}</p>
@@ -634,18 +708,64 @@ function ExamCalendarPanel({ exams, compact = false }) {
   );
 }
 
-function GradeBoundariesPanel() {
+function GradeBoundariesPanel({ subjects = [] }) {
+  const fallbackSubjects = allSubjects();
+  const subjectOptions = subjects.length ? subjects : fallbackSubjects;
+  const [selectedKey, setSelectedKey] = useState(() => {
+    const first = subjectOptions[0];
+    return first ? `${first.board}|${first.name}` : "";
+  });
+
+  useEffect(() => {
+    if (!selectedKey && subjectOptions[0]) {
+      setSelectedKey(`${subjectOptions[0].board}|${subjectOptions[0].name}`);
+    }
+  }, [selectedKey, subjectOptions]);
+
+  const [board, subjectName] = selectedKey.split("|");
+  const subjectOffset = Math.abs((subjectName || "A-Level").split("").reduce((sum, char) => sum + char.charCodeAt(0), 0) % 7);
+  const data = gradeBoundaryData.map((row, index) => ({
+    ...row,
+    astar: row.astar + subjectOffset + (board === "Edexcel" ? 2 : board === "Cambridge" ? -1 : 0),
+    a: row.a + Math.max(0, subjectOffset - 2),
+    b: row.b + Math.max(0, subjectOffset - 3) + (index === 3 ? 1 : 0),
+  }));
+
   const chartLines = [
-    { key: "astar", label: "A*", color: "#22d3ee", points: "50,92 160,84 270,76 380,66" },
-    { key: "a", label: "A", color: "#a78bfa", points: "50,128 160,119 270,109 380,96" },
-    { key: "b", label: "B", color: "#fb7185", points: "50,164 160,151 270,139 380,124" },
-  ];
+    { key: "astar", label: "A*", color: "#22d3ee" },
+    { key: "a", label: "A", color: "#a78bfa" },
+    { key: "b", label: "B", color: "#fb7185" },
+  ].map((line) => ({
+    ...line,
+    points: data
+      .map((row, index) => {
+        const x = 55 + index * 105;
+        const y = 190 - ((row[line.key] - 45) / 55) * 150;
+        return `${x},${Math.max(32, Math.min(190, y))}`;
+      })
+      .join(" "),
+  }));
+
+  const astarChange = data[2].astar - data[0].astar;
 
   return (
     <section className="rounded-3xl border border-white/10 bg-white/[0.035] p-6">
-      <div className="mb-5">
-        <h2 className="text-xl font-black text-white">Grade boundaries</h2>
-        <p className="mt-1 text-sm text-white/42">Example A* trend by subject and board. Static for now.</p>
+      <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h2 className="text-xl font-black text-white">Grade boundaries</h2>
+          <p className="mt-1 text-sm text-white/42">Static sample data by subject and board</p>
+        </div>
+        <select
+          value={selectedKey}
+          onChange={(event) => setSelectedKey(event.target.value)}
+          className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-sm font-bold text-white outline-none focus:border-cyan-300"
+        >
+          {subjectOptions.map((subject) => (
+            <option key={`${subject.board}-${subject.name}`} value={`${subject.board}|${subject.name}`}>
+              {subject.name} - {subject.board}
+            </option>
+          ))}
+        </select>
       </div>
       <div className="h-[300px] rounded-2xl border border-white/10 bg-slate-950/45 p-4">
         <svg viewBox="0 0 430 230" className="h-full w-full" role="img" aria-label="A star, A, and B grade boundary trend from 2023 to 2026 predicted">
@@ -701,22 +821,81 @@ function GradeBoundariesPanel() {
           </span>
         ))}
       </div>
+      <p className="mt-4 rounded-2xl border border-cyan-300/15 bg-cyan-300/10 p-4 text-sm font-bold leading-6 text-cyan-50/80">
+        A* boundary increased by {astarChange} marks from 2023 to 2025 for {subjectName || "this subject"}.
+      </p>
     </section>
   );
 }
 
-function MistakesTrackerPanel({ mistakes, setMistakes }) {
-  const [draft, setDraft] = useState({ question: "", topic: "", note: "", fixed: false });
+function MistakesTrackerPanel({ mistakes, setMistakes, subjects = [] }) {
+  const subjectOptions = subjects.length ? subjects : allSubjects();
+  const emptyDraft = {
+    subject: subjectOptions[0]?.name || "",
+    board: subjectOptions[0]?.board || "",
+    topic: "",
+    question: "",
+    wrong: "",
+    correctMethod: "",
+    fixed: false,
+  };
+  const [draft, setDraft] = useState(emptyDraft);
+  const [editingId, setEditingId] = useState(null);
+  const [filters, setFilters] = useState({ subject: "All", topic: "", status: "All" });
+
+  useEffect(() => {
+    if (!draft.subject && subjectOptions[0]) {
+      setDraft((current) => ({
+        ...current,
+        subject: subjectOptions[0].name,
+        board: subjectOptions[0].board,
+      }));
+    }
+  }, [draft.subject, subjectOptions]);
 
   function saveMistake() {
-    if (!draft.question.trim() && !draft.note.trim()) return;
-    setMistakes([{ id: Date.now(), ...draft }, ...mistakes]);
-    setDraft({ question: "", topic: "", note: "", fixed: false });
+    if (!draft.question.trim() && !draft.wrong.trim() && !draft.correctMethod.trim()) return;
+    if (editingId) {
+      setMistakes(mistakes.map((mistake) => mistake.id === editingId ? { ...mistake, ...draft } : mistake));
+      setEditingId(null);
+    } else {
+      setMistakes([{ id: Date.now(), createdAt: new Date().toISOString(), ...draft }, ...mistakes]);
+    }
+    setDraft(emptyDraft);
   }
 
   function toggleFixed(id) {
     setMistakes(mistakes.map((mistake) => mistake.id === id ? { ...mistake, fixed: !mistake.fixed } : mistake));
   }
+
+  function editMistake(mistake) {
+    setEditingId(mistake.id);
+    setDraft({
+      subject: mistake.subject || subjectOptions[0]?.name || "",
+      board: mistake.board || subjectOptions.find((subject) => subject.name === mistake.subject)?.board || "",
+      topic: mistake.topic || "",
+      question: mistake.question || "",
+      wrong: mistake.wrong || mistake.note || "",
+      correctMethod: mistake.correctMethod || "",
+      fixed: Boolean(mistake.fixed),
+    });
+  }
+
+  function deleteMistake(id) {
+    setMistakes(mistakes.filter((mistake) => mistake.id !== id));
+    if (editingId === id) setEditingId(null);
+  }
+
+  const filteredMistakes = mistakes.filter((mistake) => {
+    const subjectMatch = filters.subject === "All" || mistake.subject === filters.subject;
+    const topicMatch = !filters.topic.trim() || (mistake.topic || "").toLowerCase().includes(filters.topic.toLowerCase());
+    const statusMatch =
+      filters.status === "All" ||
+      (filters.status === "Fixed" && mistake.fixed) ||
+      (filters.status === "Open" && !mistake.fixed);
+
+    return subjectMatch && topicMatch && statusMatch;
+  });
 
   return (
     <section className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
@@ -726,6 +905,20 @@ function MistakesTrackerPanel({ mistakes, setMistakes }) {
         <div className="mt-5 rounded-2xl border border-dashed border-white/15 bg-slate-950/45 p-5 text-center text-sm text-white/40">
           Question image upload placeholder
         </div>
+        <select
+          value={`${draft.board}|${draft.subject}`}
+          onChange={(event) => {
+            const [board, subject] = event.target.value.split("|");
+            setDraft({ ...draft, board, subject });
+          }}
+          className="mt-3 w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white outline-none focus:border-cyan-300"
+        >
+          {subjectOptions.map((subject) => (
+            <option key={`${subject.board}-${subject.name}`} value={`${subject.board}|${subject.name}`}>
+              {subject.name} - {subject.board}
+            </option>
+          ))}
+        </select>
         <input
           value={draft.topic}
           onChange={(event) => setDraft({ ...draft, topic: event.target.value })}
@@ -739,34 +932,105 @@ function MistakesTrackerPanel({ mistakes, setMistakes }) {
           className="mt-3 min-h-24 w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white outline-none placeholder:text-white/30 focus:border-cyan-300"
         />
         <textarea
-          value={draft.note}
-          onChange={(event) => setDraft({ ...draft, note: event.target.value })}
+          value={draft.wrong}
+          onChange={(event) => setDraft({ ...draft, wrong: event.target.value })}
           placeholder="What went wrong?"
           className="mt-3 min-h-24 w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white outline-none placeholder:text-white/30 focus:border-cyan-300"
         />
-        <button onClick={saveMistake} className="mt-3 inline-flex items-center gap-2 rounded-2xl bg-violet-400 px-5 py-3 text-sm font-black text-white">
-          <Save size={16} /> Save mistake
+        <textarea
+          value={draft.correctMethod}
+          onChange={(event) => setDraft({ ...draft, correctMethod: event.target.value })}
+          placeholder="Correct method"
+          className="mt-3 min-h-24 w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white outline-none placeholder:text-white/30 focus:border-cyan-300"
+        />
+        <label className="mt-3 flex items-center gap-3 rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-sm font-bold text-white/60">
+          <input
+            type="checkbox"
+            checked={draft.fixed}
+            onChange={(event) => setDraft({ ...draft, fixed: event.target.checked })}
+            className="h-4 w-4 accent-cyan-300"
+          />
+          Mark as fixed/reviewed
+        </label>
+        <button onClick={saveMistake} className="mt-3 inline-flex items-center gap-2 rounded-2xl bg-violet-400 px-5 py-3 text-sm font-black text-white transition-all duration-200 ease-out hover:-translate-y-0.5">
+          <Save size={16} /> {editingId ? "Update mistake" : "Save mistake"}
         </button>
+        {editingId && (
+          <button
+            onClick={() => {
+              setEditingId(null);
+              setDraft(emptyDraft);
+            }}
+            className="ml-3 mt-3 inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.04] px-5 py-3 text-sm font-black text-white/60"
+          >
+            Cancel edit
+          </button>
+        )}
       </div>
 
       <div className="rounded-3xl border border-white/10 bg-white/[0.035] p-6">
-        <h3 className="text-lg font-black text-white">Review queue</h3>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h3 className="text-lg font-black text-white">Review queue</h3>
+            <p className="mt-1 text-sm text-white/42">{filteredMistakes.filter((mistake) => !mistake.fixed).length} unresolved mistakes</p>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-3">
+            <select
+              value={filters.subject}
+              onChange={(event) => setFilters({ ...filters, subject: event.target.value })}
+              className="rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white outline-none"
+            >
+              <option>All</option>
+              {unique(mistakes.map((mistake) => mistake.subject)).map((subject) => (
+                <option key={subject}>{subject}</option>
+              ))}
+            </select>
+            <input
+              value={filters.topic}
+              onChange={(event) => setFilters({ ...filters, topic: event.target.value })}
+              placeholder="Topic filter"
+              className="rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white outline-none placeholder:text-white/30"
+            />
+            <select
+              value={filters.status}
+              onChange={(event) => setFilters({ ...filters, status: event.target.value })}
+              className="rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white outline-none"
+            >
+              <option>All</option>
+              <option>Open</option>
+              <option>Fixed</option>
+            </select>
+          </div>
+        </div>
         <div className="mt-4 space-y-3">
-          {mistakes.length === 0 ? (
+          {filteredMistakes.length === 0 ? (
             <p className="rounded-2xl border border-white/10 bg-slate-950/45 p-4 text-sm text-white/45">No mistakes saved yet.</p>
           ) : (
-            mistakes.map((mistake) => (
-              <button key={mistake.id} onClick={() => toggleFixed(mistake.id)} className="w-full rounded-2xl border border-white/10 bg-slate-950/45 p-4 text-left transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-white/[0.055]">
+            filteredMistakes.map((mistake) => (
+              <div key={mistake.id} className="rounded-2xl border border-white/10 bg-slate-950/45 p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="font-black text-white">{mistake.topic || "Untitled topic"}</p>
-                    <p className="mt-1 text-sm text-white/45">{mistake.note || mistake.question}</p>
+                    <p className="text-xs font-black uppercase tracking-[0.16em] text-cyan-200">{mistake.subject || "Subject"} {mistake.board ? `- ${mistake.board}` : ""}</p>
+                    <p className="mt-2 font-black text-white">{mistake.topic || "Untitled topic"}</p>
+                    <p className="mt-1 text-sm text-white/45">{mistake.wrong || mistake.note || mistake.question}</p>
+                    {mistake.correctMethod && <p className="mt-2 text-sm text-emerald-100/65">Correct method: {mistake.correctMethod}</p>}
                   </div>
                   <span className={`rounded-full px-3 py-1 text-xs font-black ${mistake.fixed ? "bg-emerald-300 text-slate-950" : "bg-rose-400/15 text-rose-200"}`}>
                     {mistake.fixed ? "Fixed" : "Open"}
                   </span>
                 </div>
-              </button>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <button onClick={() => toggleFixed(mistake.id)} className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-black text-white/70 hover:bg-white/[0.08]">
+                    <Check size={14} /> {mistake.fixed ? "Reopen" : "Mark fixed"}
+                  </button>
+                  <button onClick={() => editMistake(mistake)} className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-black text-white/70 hover:bg-white/[0.08]">
+                    <Edit3 size={14} /> Edit
+                  </button>
+                  <button onClick={() => deleteMistake(mistake.id)} className="inline-flex items-center gap-2 rounded-xl border border-rose-300/20 bg-rose-400/10 px-3 py-2 text-xs font-black text-rose-100 hover:bg-rose-400/15">
+                    <X size={14} /> Delete
+                  </button>
+                </div>
+              </div>
             ))
           )}
         </div>
@@ -810,31 +1074,6 @@ function AiTutorPanel({ onUpgrade, compact = false }) {
         Upgrade for AI tutor
       </button>
     </section>
-  );
-}
-
-function UpgradeModal({ open, onClose }) {
-  if (!open) return null;
-  return (
-    <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/60 px-4 backdrop-blur-sm">
-      <div className="w-full max-w-2xl rounded-3xl border border-white/10 bg-[#0d1224] p-6 text-white shadow-2xl">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h2 className="text-2xl font-black">Upgrade AI tutor</h2>
-            <p className="mt-2 text-sm leading-7 text-white/50">AI tutor is part of Pro and Premium. Plans are placeholders for now.</p>
-          </div>
-          <button onClick={onClose} className="rounded-xl p-2 text-white/50 hover:bg-white/[0.06]"><X size={20} /></button>
-        </div>
-        <div className="mt-5 grid gap-3 md:grid-cols-3">
-          {plans.map(([name, text]) => (
-            <div key={name} className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-              <p className="font-black">{name}</p>
-              <p className="mt-2 text-sm leading-6 text-white/45">{text}</p>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
   );
 }
 
@@ -1694,7 +1933,111 @@ function TopicTestsPanel({ subject, user, onRequireLogin }) {
     </div>
   );
 }
-function SubjectPagePreview({ subject, onBack, user, onRequireLogin, initialSection = "overview" }) {
+function MockModePanel({ subject }) {
+  const [baseMinutes, setBaseMinutes] = useState(90);
+  const [extraTime, setExtraTime] = useState(0);
+  const [secondsLeft, setSecondsLeft] = useState(90 * 60);
+  const [running, setRunning] = useState(false);
+  const [finished, setFinished] = useState(false);
+
+  const totalSeconds = Math.max(1, Math.round(baseMinutes * (1 + extraTime / 100))) * 60;
+  const minutes = Math.floor(secondsLeft / 60);
+  const seconds = secondsLeft % 60;
+
+  useEffect(() => {
+    if (!running) return undefined;
+
+    const timer = window.setInterval(() => {
+      setSecondsLeft((current) => Math.max(0, current - 1));
+    }, 1000);
+
+    return () => window.clearInterval(timer);
+  }, [running]);
+
+  useEffect(() => {
+    if (running && secondsLeft === 0 && !finished) {
+      setRunning(false);
+      setFinished(true);
+      window.alert("Time is up. Save your answers and review the mark scheme.");
+    }
+  }, [running, secondsLeft, finished]);
+
+  function applySettings() {
+    setSecondsLeft(totalSeconds);
+    setRunning(false);
+    setFinished(false);
+  }
+
+  function resetTimer() {
+    setSecondsLeft(totalSeconds);
+    setRunning(false);
+    setFinished(false);
+  }
+
+  return (
+    <section className="mt-5 rounded-3xl border border-white/10 bg-white/[0.035] p-6">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <p className="text-sm font-black uppercase tracking-[0.18em] text-cyan-200">Mock mode</p>
+          <h3 className="mt-2 text-2xl font-black text-white">{subject.name} timed practice</h3>
+          <p className="mt-2 max-w-2xl text-sm leading-7 text-white/45">
+            Set a paper-length timer, add extra time if needed, then practise without leaving your subject workspace.
+          </p>
+        </div>
+        <div className="rounded-3xl border border-cyan-300/15 bg-cyan-300/10 px-6 py-4 text-center">
+          <p className="font-mono text-5xl font-black text-cyan-50">
+            {String(minutes).padStart(2, "0")}:{String(seconds).padStart(2, "0")}
+          </p>
+          <p className="mt-1 text-xs font-black uppercase tracking-[0.2em] text-cyan-100/60">
+            {running ? "Running" : finished ? "Finished" : "Ready"}
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-6 grid gap-3 md:grid-cols-[1fr_1fr_auto]">
+        <label className="rounded-2xl border border-white/10 bg-slate-950/45 p-4">
+          <span className="text-xs font-black uppercase tracking-[0.18em] text-white/35">Minutes</span>
+          <input
+            type="number"
+            min="1"
+            value={baseMinutes}
+            onChange={(event) => setBaseMinutes(Number(event.target.value) || 1)}
+            className="mt-2 w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-3 text-white outline-none focus:border-cyan-300"
+          />
+        </label>
+        <label className="rounded-2xl border border-white/10 bg-slate-950/45 p-4">
+          <span className="text-xs font-black uppercase tracking-[0.18em] text-white/35">Extra time</span>
+          <select
+            value={extraTime}
+            onChange={(event) => setExtraTime(Number(event.target.value))}
+            className="mt-2 w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-3 text-white outline-none focus:border-cyan-300"
+          >
+            <option value={0}>0%</option>
+            <option value={25}>25%</option>
+            <option value={50}>50%</option>
+          </select>
+        </label>
+        <button onClick={applySettings} className="rounded-2xl border border-white/10 bg-white/[0.05] px-5 py-3 text-sm font-black text-white/75 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-white/[0.08]">
+          Apply
+        </button>
+      </div>
+
+      <div className="mt-5 flex flex-wrap gap-3">
+        <button onClick={() => setRunning(true)} className="rounded-2xl bg-cyan-300 px-5 py-3 text-sm font-black text-slate-950 transition-all duration-200 ease-out hover:-translate-y-0.5">
+          Start
+        </button>
+        <button onClick={() => setRunning(false)} className="rounded-2xl border border-white/10 bg-white/[0.05] px-5 py-3 text-sm font-black text-white/70 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-white/[0.08]">
+          Pause
+        </button>
+        <button onClick={resetTimer} className="rounded-2xl border border-rose-300/20 bg-rose-400/10 px-5 py-3 text-sm font-black text-rose-100 transition-all duration-200 ease-out hover:-translate-y-0.5">
+          Reset
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function SubjectPagePreview({ subject, onBack, user, onRequireLogin, onOpenPricing, initialSection = "overview" }) {
   const [section, setSection] = useState(initialSection);
 
   useEffect(() => {
@@ -1782,6 +2125,10 @@ function SubjectPagePreview({ subject, onBack, user, onRequireLogin, initialSect
             user={user}
             onRequireLogin={onRequireLogin}
             />
+        ) : section === "mock" ? (
+          <MockModePanel subject={subject} />
+        ) : section === "ai" ? (
+          <AiTutorPanel onUpgrade={onOpenPricing} />
         ) : (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {cards.map(([Icon, title, text, id]) => (
@@ -1804,7 +2151,7 @@ function SubjectPagePreview({ subject, onBack, user, onRequireLogin, initialSect
         </div>
       )}
 
-      {section !== "overview" && section !== "pastpapers" && section !== "topictests" && (
+      {section !== "overview" && section !== "pastpapers" && section !== "topictests" && section !== "mock" && section !== "ai" && (
         <div className="mt-5 rounded-2xl border border-white/10 bg-white/[0.035] p-6">
           <h3 className="text-xl font-black text-white">
             {cards.find((card) => card[3] === section)?.[1]}
@@ -1825,6 +2172,7 @@ export default function Dashboard({
   profile = null,
   onSaveProfile = async () => {},
   onRequireLogin = () => {},
+  onOpenPricing = () => {},
   onGoHome = () => {},
 }) {
   const subjects = allSubjects();
@@ -1841,8 +2189,8 @@ export default function Dashboard({
   const [activeSubjectId, setActiveSubjectId] = useState(null);
   const [subjectSection, setSubjectSection] = useState("overview");
   const [profileOpen, setProfileOpen] = useState(false);
-  const [upgradeOpen, setUpgradeOpen] = useState(false);
   const [mistakes, setMistakes] = useState(() => readStorage("alevel-dojo-mistakes", []));
+  const [manualExams, setManualExams] = useState(() => readStorage("alevel-dojo-manual-exams", []));
 
   useEffect(() => {
     async function loadDashboardProfile() {
@@ -1892,6 +2240,10 @@ export default function Dashboard({
     writeStorage("alevel-dojo-mistakes", mistakes);
   }, [mistakes]);
 
+  useEffect(() => {
+    writeStorage("alevel-dojo-manual-exams", manualExams);
+  }, [manualExams]);
+
   const activeSubjects = subjects.filter((subject) => selectedIds.includes(subject.id));
   const activeSubject = subjects.find((subject) => subject.id === activeSubjectId) || null;
 
@@ -1905,13 +2257,25 @@ export default function Dashboard({
     mistakesOpen: mistakes.filter((mistake) => !mistake.fixed).length,
   };
 
-  const upcomingExams = examDates
-    .filter((exam) =>
+  const todayStart = new Date().setHours(0, 0, 0, 0);
+  const upcomingExams = [
+    ...examDates.filter((exam) =>
       activeSubjects.some(
         (subject) => subject.name === exam.subject && subject.board === exam.board
       )
-    )
+    ),
+    ...manualExams.filter((exam) =>
+      activeSubjects.some(
+        (subject) => subject.name === exam.subject && subject.board === exam.board
+      )
+    ),
+  ]
+    .filter((exam) => new Date(`${exam.date}T00:00:00`).getTime() >= todayStart)
     .sort((a, b) => new Date(a.date) - new Date(b.date));
+
+  function addManualExam(exam) {
+    setManualExams((current) => [exam, ...current]);
+  }
 
   function toggleDraftSubject(id) {
     setDraftSelectedIds((current) =>
@@ -1962,7 +2326,6 @@ export default function Dashboard({
       <Watermark />
       <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_12%_8%,rgba(255,92,82,0.11),transparent_26%),radial-gradient(circle_at_88%_10%,rgba(124,58,237,0.14),transparent_28%),radial-gradient(circle_at_72%_86%,rgba(34,211,238,0.06),transparent_24%)]" />
 
-      <UpgradeModal open={upgradeOpen} onClose={() => setUpgradeOpen(false)} />
       <ProfileModal
         open={profileOpen}
         onClose={() => setProfileOpen(false)}
@@ -1984,6 +2347,7 @@ export default function Dashboard({
           activeSubjects={activeSubjects}
           onOpenSubject={openSubject}
           onOpenProfile={() => setProfileOpen(true)}
+          onOpenPricing={onOpenPricing}
           onGoHome={onGoHome}
         />
 
@@ -2022,7 +2386,7 @@ export default function Dashboard({
                 Profile
               </button>
               <button
-                onClick={() => setUpgradeOpen(true)}
+                onClick={onOpenPricing}
                 className="rounded-2xl bg-gradient-to-r from-rose-400 to-violet-500 px-5 py-3 text-sm font-black text-white shadow-lg shadow-rose-500/15 transition-all duration-200 ease-out hover:-translate-y-0.5"
               >
                 Upgrade
@@ -2040,16 +2404,17 @@ export default function Dashboard({
               }}
               user={user}
               onRequireLogin={onRequireLogin}
+              onOpenPricing={onOpenPricing}
               initialSection={subjectSection}
             />
           ) : activeView === "calendar" ? (
-            <ExamCalendarPanel exams={upcomingExams} />
+            <ExamCalendarPanel exams={upcomingExams} subjects={activeSubjects} onAddExam={addManualExam} />
           ) : activeView === "mistakes" ? (
-            <MistakesTrackerPanel mistakes={mistakes} setMistakes={setMistakes} />
+            <MistakesTrackerPanel mistakes={mistakes} setMistakes={setMistakes} subjects={activeSubjects} />
           ) : activeView === "boundaries" ? (
-            <GradeBoundariesPanel />
+            <GradeBoundariesPanel subjects={activeSubjects} />
           ) : activeView === "ai" ? (
-            <AiTutorPanel onUpgrade={() => setUpgradeOpen(true)} />
+            <AiTutorPanel onUpgrade={onOpenPricing} />
           ) : activeView === "settings" ? (
             <ProfileSettingsPanel
               profile={dashboardProfile}
@@ -2066,6 +2431,7 @@ export default function Dashboard({
               stats={stats}
               upcomingExams={upcomingExams}
               onSelectView={selectView}
+              onOpenPricing={onOpenPricing}
             />
           )}
         </main>

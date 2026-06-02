@@ -50,6 +50,10 @@ function HomePageUpgradePreview({
   signIn = () => {},
   signUp = () => {},
   onBrowsePapers = () => {},
+  onOpenPublicBrowse = () => {},
+  onOpenPricing = () => {},
+  onGoDashboard = () => {},
+  onOpenLegal = () => {},
   onOpenAuth = () => {},
   onLogout = () => {},
 }) {
@@ -57,6 +61,10 @@ function HomePageUpgradePreview({
   const [authMode, setAuthMode] = useState("signin");
   const [name, setName] = useState("");
   const loggedIn = Boolean(user);
+
+  function scrollToSection(id) {
+    document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
 
   const boards = [
     [
@@ -112,11 +120,11 @@ function HomePageUpgradePreview({
             </div>
           </button>
           <nav className="hidden items-center gap-7 text-sm font-bold text-white/65 md:flex">
-            <button className="hover:text-white">Subjects</button>
-            <button className="hover:text-white">Features</button>
-            <button className="hover:text-white">Pricing</button>
-            <button className="hover:text-white">FAQs</button>
-            <button className="hover:text-white">Contact</button>
+            <button onClick={onOpenPublicBrowse} className="hover:text-white">Subjects</button>
+            <button onClick={() => scrollToSection("features")} className="hover:text-white">Features</button>
+            <button onClick={onOpenPricing} className="hover:text-white">Pricing</button>
+            <button onClick={() => scrollToSection("faqs")} className="hover:text-white">FAQs</button>
+            <button onClick={() => scrollToSection("contact")} className="hover:text-white">Contact</button>
           </nav>
           <div className="hidden items-center gap-3 md:flex">
             {loggedIn ? (
@@ -217,14 +225,14 @@ function HomePageUpgradePreview({
           </div>
         </section>
 
-        <section className="mx-auto max-w-7xl px-6 py-20">
+        <section id="features" className="mx-auto max-w-7xl px-6 py-20 scroll-mt-24">
           <div className="mb-12 text-center"><h2 className="text-6xl font-black text-white">All features</h2><p className="mt-5 text-lg text-white/50">The homepage can end with a clean feature grid showing what already exists and what is coming next.</p></div>
           <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-4">
             {features.map(([Icon, title, text]) => (<div key={title} className="rounded-[2rem] border border-white/10 bg-white/[0.035] p-7 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-white/[0.06]"><div className="mb-6 inline-flex rounded-2xl bg-rose-400/15 p-4 text-white"><Icon size={24} /></div><h3 className="text-xl font-black text-white">{title}</h3><p className="mt-4 text-sm leading-7 text-white/45">{text}</p></div>))}
           </div>
         </section>
 
-        <section className="mx-auto max-w-5xl px-6 py-20">
+        <section id="faqs" className="mx-auto max-w-5xl px-6 py-20 scroll-mt-24">
           <div className="mb-10 text-center"><h2 className="text-4xl font-black text-white md:text-6xl">Frequently asked <span className="bg-gradient-to-r from-rose-300 to-violet-300 bg-clip-text text-transparent">questions</span></h2><p className="mt-4 text-white/50">Everything students need to know before they start.</p></div>
           <div className="overflow-hidden rounded-[2rem] border border-white/10 bg-white/[0.04]">
             {faqs.map(([q, a], index) => { const isOpen = openFaq === index; return (<div key={q} className="border-b border-white/10 last:border-b-0"><button onClick={() => setOpenFaq(isOpen ? -1 : index)} className="flex w-full items-center justify-between gap-4 px-6 py-5 text-left"><span className="font-black text-white">{q}</span><ChevronDown className={`shrink-0 text-violet-300 transition ${isOpen ? "rotate-180" : ""}`} size={20} /></button>{isOpen && <div className="px-6 pb-6 text-sm leading-7 text-white/55">{a}</div>}</div>); })}
@@ -265,7 +273,40 @@ function HomePageUpgradePreview({
         </section>
       </main>
 
-      <footer className="relative z-10 border-t border-white/10 px-6 py-12"><div className="mx-auto grid max-w-7xl gap-10 md:grid-cols-[1.2fr_1fr_1fr_1fr]"><div><p className="text-lg font-black text-white">A-Level Dojo</p><p className="mt-4 max-w-sm text-sm leading-7 text-white/45">Past papers, mark schemes, topic tests, notes, and progress tools for smarter A-Level revision.</p></div><div><h4 className="font-black text-white">Platform</h4><p className="mt-4 text-sm text-white/45">Past papers<br />Topic tests<br />Dashboard<br />Pricing</p></div><div><h4 className="font-black text-white">Resources</h4><p className="mt-4 text-sm text-white/45">FAQs<br />Revision tips<br />Exam guides<br />Subjects</p></div><div><h4 className="font-black text-white">Contact</h4><p className="mt-4 text-sm text-white/45">support@aleveldojo.com<br />Privacy Policy<br />Terms</p></div></div></footer>
+      <footer id="contact" className="relative z-10 scroll-mt-24 border-t border-white/10 px-6 py-12">
+        <div className="mx-auto grid max-w-7xl gap-10 md:grid-cols-[1.2fr_1fr_1fr_1fr]">
+          <div>
+            <p className="text-lg font-black text-white">A-Level Dojo</p>
+            <p className="mt-4 max-w-sm text-sm leading-7 text-white/45">Past papers, mark schemes, topic tests, notes, and progress tools for smarter A-Level revision.</p>
+          </div>
+          <div>
+            <h4 className="font-black text-white">Platform</h4>
+            <div className="mt-4 grid gap-2 text-left text-sm text-white/45">
+              <button onClick={onBrowsePapers} className="text-left hover:text-white">Past papers</button>
+              <button onClick={onBrowsePapers} className="text-left hover:text-white">Topic tests</button>
+              <button onClick={loggedIn ? onGoDashboard : onOpenAuth} className="text-left hover:text-white">Dashboard</button>
+              <button onClick={onOpenPricing} className="text-left hover:text-white">Pricing</button>
+            </div>
+          </div>
+          <div>
+            <h4 className="font-black text-white">Resources</h4>
+            <div className="mt-4 grid gap-2 text-left text-sm text-white/45">
+              <button onClick={() => scrollToSection("faqs")} className="text-left hover:text-white">FAQs</button>
+              <button onClick={() => scrollToSection("features")} className="text-left hover:text-white">Revision tips</button>
+              <button onClick={onBrowsePapers} className="text-left hover:text-white">Exam guides</button>
+              <button onClick={onOpenPublicBrowse} className="text-left hover:text-white">Subjects</button>
+            </div>
+          </div>
+          <div>
+            <h4 className="font-black text-white">Contact</h4>
+            <div className="mt-4 grid gap-2 text-left text-sm text-white/45">
+              <a href="mailto:support@aleveldojo.com" className="hover:text-white">support@aleveldojo.com</a>
+              <button onClick={() => onOpenLegal("privacy")} className="text-left hover:text-white">Privacy Policy</button>
+              <button onClick={() => onOpenLegal("terms")} className="text-left hover:text-white">Terms</button>
+            </div>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }
@@ -279,6 +320,10 @@ export default function HomePage({
   signIn = () => {},
   signUp = () => {},
   onBrowsePapers = () => {},
+  onOpenPublicBrowse = () => {},
+  onOpenPricing = () => {},
+  onGoDashboard = () => {},
+  onOpenLegal = () => {},
   onOpenAuth = () => {},
   onLogout = () => {},
 }) {
@@ -286,6 +331,10 @@ export default function HomePage({
     <HomePageUpgradePreview
       user={user}
       onBrowsePapers={onBrowsePapers}
+      onOpenPublicBrowse={onOpenPublicBrowse}
+      onOpenPricing={onOpenPricing}
+      onGoDashboard={onGoDashboard}
+      onOpenLegal={onOpenLegal}
       onOpenAuth={onOpenAuth}
       onLogout={onLogout}
       email={email}

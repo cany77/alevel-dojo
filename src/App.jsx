@@ -9,6 +9,7 @@ import LockedActionModal from "./LockedActionModal";
 import Dashboard from "./Dashboard";
 import PublicBrowsePage from "./PublicBrowsePage";
 import OnboardingFlow from "./OnboardingFlow";
+import PricingModal from "./PricingModal";
 
 const subjects = [
   {
@@ -138,12 +139,53 @@ function paperLabel(paper) {
   return `${paper.subject} • ${paper.variant ? paper.variant + " • " : ""}${paper.qualification || ""} • ${paper.session || ""} ${paper.year || ""} • ${paper.unit || ""}`;
 }
 
+function LegalModal({ type, onClose }) {
+  if (!type) return null;
+
+  const isPrivacy = type === "privacy";
+  return (
+    <div className="fixed inset-0 z-[1200] flex items-center justify-center bg-black/70 px-4 text-white backdrop-blur-sm">
+      <div className="w-full max-w-2xl rounded-3xl border border-white/10 bg-[#0b1020] p-6 shadow-2xl shadow-black/40">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-sm font-black uppercase tracking-[0.22em] text-cyan-200">A-Level Dojo</p>
+            <h2 className="mt-2 text-2xl font-black">{isPrivacy ? "Privacy Policy" : "Terms of Use"}</h2>
+          </div>
+          <button
+            onClick={onClose}
+            className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm font-black text-white/60 hover:bg-white/[0.08]"
+          >
+            Close
+          </button>
+        </div>
+        <div className="mt-5 space-y-4 text-sm leading-7 text-white/55">
+          {isPrivacy ? (
+            <>
+              <p>This placeholder privacy policy explains how A-Level Dojo will handle account and study data while the full legal policy is being prepared.</p>
+              <p>We use your email for authentication, selected subjects for personalization, and progress data to power dashboard features. We do not sell student data.</p>
+              <p>When paid features launch, this policy should be replaced with a complete version covering payments, analytics, retention, and support requests.</p>
+            </>
+          ) : (
+            <>
+              <p>These placeholder terms describe acceptable use of A-Level Dojo while the full legal terms are being prepared.</p>
+              <p>Students may use the platform for revision, paper practice, notes, and progress tracking. Uploaded or saved content should be your own work or content you have permission to use.</p>
+              <p>Premium plans, payment terms, refunds, and AI usage rules will be added before paid features go live.</p>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function ALevelDojo() {
   const [user, setUser] = useState(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showLockedModal, setShowLockedModal] = useState(false);
+  const [showPricingModal, setShowPricingModal] = useState(false);
+  const [legalModal, setLegalModal] = useState(null);
   const [showFloatingMock, setShowFloatingMock] = useState(false);
   const [profile, setProfile] = useState(null);
   const [profileLoading, setProfileLoading] = useState(false);
@@ -1061,6 +1103,20 @@ if (page === "home") {
       signIn={signIn}
       signUp={signUp}
       onOpenAuth={() => setShowAuthModal(true)}
+      onOpenPricing={() => setShowPricingModal(true)}
+      onOpenLegal={setLegalModal}
+      onOpenPublicBrowse={() => {
+        setPage("publicBrowse");
+        window.scrollTo(0, 0);
+      }}
+      onGoDashboard={() => {
+        if (user) {
+          setPage("library");
+          window.scrollTo(0, 0);
+        } else {
+          setShowAuthModal(true);
+        }
+      }}
       onLogout={logOut}
       onBrowsePapers={() => {
         if (user) {
@@ -1081,6 +1137,13 @@ if (page === "home") {
         signIn={signIn}
         signUp={signUp}
       />
+      <PricingModal
+        open={showPricingModal}
+        onClose={() => setShowPricingModal(false)}
+        onOpenAuth={() => setShowAuthModal(true)}
+        user={user}
+      />
+      <LegalModal type={legalModal} onClose={() => setLegalModal(null)} />
             <LockedActionModal
         showLockedModal={showLockedModal}
         setShowLockedModal={setShowLockedModal}
@@ -1121,6 +1184,13 @@ if (page === "publicBrowse") {
         setShowLockedModal={setShowLockedModal}
         setShowAuthModal={setShowAuthModal}
       />
+      <PricingModal
+        open={showPricingModal}
+        onClose={() => setShowPricingModal(false)}
+        onOpenAuth={() => setShowAuthModal(true)}
+        user={user}
+      />
+      <LegalModal type={legalModal} onClose={() => setLegalModal(null)} />
     </>
   );
 }
@@ -1153,6 +1223,7 @@ if (page === "library") {
         profile={profile}
         onSaveProfile={completeOnboarding}
         onRequireLogin={() => setShowLockedModal(true)}
+        onOpenPricing={() => setShowPricingModal(true)}
         onGoHome={() => {
           setPage("home");
           window.scrollTo(0, 0);
@@ -1175,6 +1246,13 @@ if (page === "library") {
         setShowLockedModal={setShowLockedModal}
         setShowAuthModal={setShowAuthModal}
       />
+      <PricingModal
+        open={showPricingModal}
+        onClose={() => setShowPricingModal(false)}
+        onOpenAuth={() => setShowAuthModal(true)}
+        user={user}
+      />
+      <LegalModal type={legalModal} onClose={() => setLegalModal(null)} />
     </>
   );
 }
