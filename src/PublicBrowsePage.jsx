@@ -86,8 +86,15 @@ export default function PublicBrowsePage({
   onGoHome = () => {},
   onOpenAuth = () => {},
   onRequireLogin = () => {},
+  onOpenPricing = () => {},
+  onGoFeatures = () => {},
+  onGoFaqs = () => {},
+  onGoContact = () => {},
+  onOpenDashboard = () => {},
+  onLogout = () => {},
 }) {
   const [selectedBoard, setSelectedBoard] = useState("All");
+  const loggedIn = Boolean(user);
 
   const visibleSubjects = useMemo(() => {
     if (selectedBoard === "All") return subjects;
@@ -95,26 +102,53 @@ export default function PublicBrowsePage({
   }, [selectedBoard]);
 
   return (
-    <div className="min-h-screen bg-[#0d1224] text-white">
+    <div className="min-h-screen bg-[#060816] text-white">
       <Watermark />
       <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_18%_8%,rgba(244,63,94,0.14),transparent_28%),radial-gradient(circle_at_84%_12%,rgba(124,58,237,0.16),transparent_30%),radial-gradient(circle_at_68%_84%,rgba(34,211,238,0.08),transparent_26%)]" />
-      <header className="relative z-10 border-b border-white/10 bg-[#0d1224]/82 px-6 py-4 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4">
+      <header className="sticky top-0 z-50 border-b border-white/10 bg-[#060816]/80 backdrop-blur-xl">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-6 py-4">
           <Logo onGoHome={onGoHome} />
 
-          <div className="flex items-center gap-3">
-            <button
-              onClick={onOpenAuth}
-              className="rounded-full border border-white/15 bg-white/[0.04] px-5 py-2.5 text-sm font-bold text-white/75 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:border-violet-300/50 hover:bg-white/[0.07] hover:text-white"
-            >
-              Sign in
-            </button>
-            <button
-              onClick={onOpenAuth}
-              className="rounded-full bg-gradient-to-r from-rose-400 to-violet-500 px-5 py-2.5 text-sm font-black text-white shadow-lg shadow-violet-600/20 transition-all duration-200 ease-out hover:-translate-y-0.5"
-            >
-              Create account
-            </button>
+          <nav className="hidden items-center gap-7 text-sm font-bold text-white/65 md:flex">
+            <button className="text-white">Subjects</button>
+            <button onClick={onGoFeatures} className="hover:text-white">Features</button>
+            <button onClick={onOpenPricing} className="hover:text-white">Pricing</button>
+            <button onClick={onGoFaqs} className="hover:text-white">FAQs</button>
+            <button onClick={onGoContact} className="hover:text-white">Contact</button>
+          </nav>
+
+          <div className="hidden items-center gap-3 md:flex">
+            {loggedIn ? (
+              <>
+                <button
+                  onClick={onOpenDashboard}
+                  className="rounded-2xl bg-gradient-to-r from-rose-400 to-violet-500 px-5 py-3 text-sm font-black text-white shadow-lg shadow-violet-500/20 transition-all duration-200 ease-out hover:-translate-y-0.5"
+                >
+                  Open dashboard
+                </button>
+                <button
+                  onClick={onLogout}
+                  className="rounded-2xl border border-white/15 px-5 py-3 text-sm font-bold text-white/75 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-white/5"
+                >
+                  Log out
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={onOpenAuth}
+                  className="rounded-2xl border border-white/15 px-5 py-3 text-sm font-bold text-white/75 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-white/5"
+                >
+                  Sign in
+                </button>
+                <button
+                  onClick={onOpenAuth}
+                  className="rounded-2xl bg-gradient-to-r from-rose-400 to-violet-500 px-5 py-3 text-sm font-black text-white shadow-lg shadow-violet-500/20 transition-all duration-200 ease-out hover:-translate-y-0.5"
+                >
+                  Get started free
+                </button>
+              </>
+            )}
           </div>
         </div>
       </header>
@@ -126,7 +160,7 @@ export default function PublicBrowsePage({
             Browse A-Level papers by subject
           </h1>
           <p className="mx-auto mt-5 max-w-2xl text-base leading-8 text-white/58 md:text-lg">
-            See which exam boards and subjects are available before creating an account. Previewing, downloading, editing, and saving papers unlock after sign in.
+            See all supported boards and subjects before creating an account. Previewing, downloading, editing, and saving papers unlock after sign in.
           </p>
         </section>
 

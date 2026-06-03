@@ -2,6 +2,7 @@ import { papers } from "./papersData";
 import { supabase } from "./supabaseClient";
 import PdfViewer from "./PdfViewer";
 import Watermark from "./Watermark";
+import usePersistentState from "./usePersistentState";
 import React, { useEffect, useMemo, useState } from "react";
 import {
   BarChart3,
@@ -114,6 +115,16 @@ const plans = [
 ];
 
 const userPlan = "free";
+
+const defaultDashboardState = {
+  activeView: "dashboard",
+  activeSubjectId: null,
+  subjectSection: "overview",
+  sidebarOpen: false,
+  selectedBoard: null,
+  openedPaper: null,
+  openedTopicTest: null,
+};
 
 function paperId(paper) {
   return [
@@ -1209,7 +1220,13 @@ function ProfileSettingsPanel({
     </section>
   );
 }
-function PastPapersPanel({ subject, user, onRequireLogin }) {
+function PastPapersPanel({
+  subject,
+  user,
+  onRequireLogin,
+  persistedPreview = null,
+  onPreviewChange = () => {},
+}) {
   const [activePreview, setActivePreview] = useState(null);
   const [showMarkScheme, setShowMarkScheme] = useState(false);
   const [maximizedPreview, setMaximizedPreview] = useState(false);
@@ -1234,6 +1251,40 @@ function PastPapersPanel({ subject, user, onRequireLogin }) {
       paper.board === subject.board &&
       paper.subject === subject.name
   );
+
+  useEffect(() => {
+    if (persistedPreview?.type !== "pastPaper") return;
+
+    const restoredPaper = subjectPastPapers.find(
+      (paper) => paperId(paper) === persistedPreview.paperId
+    );
+
+    if (restoredPaper) {
+      setActivePreview({
+        paper: restoredPaper,
+        mode: persistedPreview.mode || "preview",
+      });
+      setShowMarkScheme(Boolean(persistedPreview.showMarkScheme));
+    }
+  }, [persistedPreview?.paperId, persistedPreview?.type, subject.id]);
+
+  function openPaperPreview(paper, mode, showMarkSchemeNext = false) {
+    setActivePreview({ paper, mode });
+    setShowMarkScheme(showMarkSchemeNext);
+    onPreviewChange({
+      type: "pastPaper",
+      paperId: paperId(paper),
+      mode,
+      showMarkScheme: showMarkSchemeNext,
+    });
+  }
+
+  function closePaperPreview() {
+    setActivePreview(null);
+    setShowMarkScheme(false);
+    setMaximizedPreview(false);
+    onPreviewChange(null);
+  }
 
   const availableQualifications = [
     "All qualifications",
@@ -1328,9 +1379,7 @@ function PastPapersPanel({ subject, user, onRequireLogin }) {
         {activePreview && (
           <button
             onClick={() => {
-              setActivePreview(null);
-              setShowMarkScheme(false);
-              setMaximizedPreview(false);
+              closePaperPreview();
             }}
             className="rounded-xl border border-white/10 bg-white/[0.05] px-4 py-2 text-sm font-bold text-white/70 hover:bg-white/[0.08]"
           >
@@ -1374,9 +1423,7 @@ function PastPapersPanel({ subject, user, onRequireLogin }) {
                 </button>
               <button
                 onClick={() => {
-                  setActivePreview(null);
-                  setShowMarkScheme(false);
-                  setMaximizedPreview(false);
+                  closePaperPreview();
                 }}
                 className="rounded-xl bg-[#ff554f] px-4 py-2 text-sm font-black text-white"
               >
@@ -1573,8 +1620,7 @@ function PastPapersPanel({ subject, user, onRequireLogin }) {
                       <button
                         onClick={() =>
                           requireLogin(() => {
-                            setActivePreview({ paper, mode: "preview" });
-                            setShowMarkScheme(true);
+                            openPaperPreview(paper, "preview", true);
                           })
                         }
                         className="inline-flex items-center gap-2 rounded-xl bg-cyan-300 px-4 py-2 text-sm font-black text-slate-950 hover:bg-cyan-200"
@@ -1586,8 +1632,7 @@ function PastPapersPanel({ subject, user, onRequireLogin }) {
                       <button
                        onClick={() =>
   requireLogin(() => {
-    setActivePreview({ paper, mode: "edit" });
-    setShowMarkScheme(false);
+    openPaperPreview(paper, "edit", false);
   })
 }
                         className="inline-flex items-center gap-2 rounded-xl bg-[#ff554f] px-4 py-2 text-sm font-black text-white hover:brightness-110"
@@ -1634,7 +1679,13 @@ function PastPapersPanel({ subject, user, onRequireLogin }) {
     </div>
   );
 }
-function TopicTestsPanel({ subject, user, onRequireLogin }) {
+function TopicTestsPanel({
+  subject,
+  user,
+  onRequireLogin,
+  persistedPreview = null,
+  onPreviewChange = () => {},
+}) {
   const [activePreview, setActivePreview] = useState(null);
   const [testSearch, setTestSearch] = useState("");
   const [selectedTopic, setSelectedTopic] = useState("All topics");
@@ -1655,6 +1706,35 @@ function TopicTestsPanel({ subject, user, onRequireLogin }) {
       paper.board === subject.board &&
       paper.subject === subject.name
   );
+
+  useEffect(() => {
+    if (persistedPreview?.type !== "topicTest") return;
+
+    const restoredPaper = subjectTopicTests.find(
+      (paper) => paperId(paper) === persistedPreview.paperId
+    );
+
+    if (restoredPaper) {
+      setActivePreview({
+        paper: restoredPaper,
+        mode: persistedPreview.mode || "preview",
+      });
+    }
+  }, [persistedPreview?.paperId, persistedPreview?.type, subject.id]);
+
+  function openTopicPreview(paper, mode) {
+    setActivePreview({ paper, mode });
+    onPreviewChange({
+      type: "topicTest",
+      paperId: paperId(paper),
+      mode,
+    });
+  }
+
+  function closeTopicPreview() {
+    setActivePreview(null);
+    onPreviewChange(null);
+  }
 
   const availableTopics = [
     "All topics",
@@ -1734,7 +1814,7 @@ function TopicTestsPanel({ subject, user, onRequireLogin }) {
 
         {activePreview && (
           <button
-            onClick={() => setActivePreview(null)}
+            onClick={closeTopicPreview}
             className="rounded-xl border border-white/10 bg-white/[0.05] px-4 py-2 text-sm font-bold text-white/70 hover:bg-white/[0.08]"
           >
             Close preview
@@ -1756,7 +1836,7 @@ function TopicTestsPanel({ subject, user, onRequireLogin }) {
             </div>
 
             <button
-              onClick={() => setActivePreview(null)}
+              onClick={closeTopicPreview}
               className="rounded-xl bg-[#ff554f] px-4 py-2 text-sm font-black text-white"
             >
               Close
@@ -1888,7 +1968,7 @@ function TopicTestsPanel({ subject, user, onRequireLogin }) {
                       <button
                         onClick={() =>
                           requireLogin(() => {
-                            setActivePreview({ paper, mode: "preview" });
+                            openTopicPreview(paper, "preview");
                           })
                         }
                         className="inline-flex items-center gap-2 rounded-xl bg-cyan-300 px-4 py-2 text-sm font-black text-slate-950 hover:bg-cyan-200"
@@ -1900,7 +1980,7 @@ function TopicTestsPanel({ subject, user, onRequireLogin }) {
                       <button
                         onClick={() =>
                           requireLogin(() => {
-                            setActivePreview({ paper, mode: "edit" });
+                            openTopicPreview(paper, "edit");
                           })
                         }
                         className="inline-flex items-center gap-2 rounded-xl bg-[#ff554f] px-4 py-2 text-sm font-black text-white hover:brightness-110"
@@ -2037,12 +2117,27 @@ function MockModePanel({ subject }) {
   );
 }
 
-function SubjectPagePreview({ subject, onBack, user, onRequireLogin, onOpenPricing, initialSection = "overview" }) {
+function SubjectPagePreview({
+  subject,
+  onBack,
+  user,
+  onRequireLogin,
+  onOpenPricing,
+  initialSection = "overview",
+  persistedPreview = null,
+  onPreviewChange = () => {},
+  onSectionChange = () => {},
+}) {
   const [section, setSection] = useState(initialSection);
 
   useEffect(() => {
     setSection(initialSection);
   }, [initialSection, subject.id]);
+
+  function changeSection(nextSection) {
+    setSection(nextSection);
+    onSectionChange(nextSection);
+  }
 
   const cards = [
     [FileText, "Past papers", "Question papers, mark schemes, PDF edit, downloads", "pastpapers"],
@@ -2086,7 +2181,7 @@ function SubjectPagePreview({ subject, onBack, user, onRequireLogin, onOpenPrici
           </div>
 
           <button
-            onClick={() => setSection("pastpapers")}
+            onClick={() => changeSection("pastpapers")}
             className={`rounded-2xl px-5 py-3 text-sm font-black ${
               boardColors[subject.board].button
             }`}
@@ -2100,7 +2195,7 @@ function SubjectPagePreview({ subject, onBack, user, onRequireLogin, onOpenPrici
         {cards.map(([Icon, title, text, id]) => (
           <button
             key={id}
-            onClick={() => setSection(id)}
+            onClick={() => changeSection(id)}
             className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-black transition ${
               section === id
                 ? "bg-cyan-300 text-slate-950"
@@ -2118,12 +2213,16 @@ function SubjectPagePreview({ subject, onBack, user, onRequireLogin, onOpenPrici
             subject={subject}
             user={user}
             onRequireLogin={onRequireLogin}
+            persistedPreview={persistedPreview}
+            onPreviewChange={onPreviewChange}
             />
         ) : section === "topictests" ? (
         <TopicTestsPanel
             subject={subject}
             user={user}
             onRequireLogin={onRequireLogin}
+            persistedPreview={persistedPreview}
+            onPreviewChange={onPreviewChange}
             />
         ) : section === "mock" ? (
           <MockModePanel subject={subject} />
@@ -2134,7 +2233,7 @@ function SubjectPagePreview({ subject, onBack, user, onRequireLogin, onOpenPrici
           {cards.map(([Icon, title, text, id]) => (
             <button
               key={id}
-              onClick={() => setSection(id)}
+              onClick={() => changeSection(id)}
               className="rounded-2xl border border-white/10 bg-slate-950/55 p-5 text-left transition hover:-translate-y-0.5 hover:bg-white/[0.06]"
             >
               <div className="mb-4 inline-flex rounded-xl bg-white/[0.06] p-3 text-cyan-200">
@@ -2176,6 +2275,10 @@ export default function Dashboard({
   onGoHome = () => {},
 }) {
   const subjects = allSubjects();
+  const [persistedDashboardState, setPersistedDashboardState] = usePersistentState(
+    "alevel-dojo-dashboard-state",
+    defaultDashboardState
+  );
   const [selectedIds, setSelectedIds] = useState(() =>
     profileSubjectsToIds(profile?.subjects || profile?.selected_subjects || [], subjects)
   );
@@ -2184,11 +2287,15 @@ export default function Dashboard({
   );
   const [dashboardProfile, setDashboardProfile] = useState(profile);
   const [loadingSubjects, setLoadingSubjects] = useState(Boolean(user && !profile));
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [activeView, setActiveView] = useState("dashboard");
-  const [activeSubjectId, setActiveSubjectId] = useState(null);
-  const [subjectSection, setSubjectSection] = useState("overview");
+  const [sidebarOpen, setSidebarOpen] = useState(Boolean(persistedDashboardState.sidebarOpen));
+  const [activeView, setActiveView] = useState(persistedDashboardState.activeView || "dashboard");
+  const [activeSubjectId, setActiveSubjectId] = useState(persistedDashboardState.activeSubjectId || null);
+  const [subjectSection, setSubjectSection] = useState(persistedDashboardState.subjectSection || "overview");
   const [profileOpen, setProfileOpen] = useState(false);
+  const [openedResource, setOpenedResource] = useState({
+    openedPaper: persistedDashboardState.openedPaper || null,
+    openedTopicTest: persistedDashboardState.openedTopicTest || null,
+  });
   const [mistakes, setMistakes] = useState(() => readStorage("alevel-dojo-mistakes", []));
   const [manualExams, setManualExams] = useState(() => readStorage("alevel-dojo-manual-exams", []));
 
@@ -2247,6 +2354,35 @@ export default function Dashboard({
   const activeSubjects = subjects.filter((subject) => selectedIds.includes(subject.id));
   const activeSubject = subjects.find((subject) => subject.id === activeSubjectId) || null;
 
+  useEffect(() => {
+    if (activeSubjectId && !subjects.some((subject) => subject.id === activeSubjectId)) {
+      setActiveSubjectId(null);
+      setSubjectSection("overview");
+      setActiveView("dashboard");
+    }
+  }, [activeSubjectId, subjects]);
+
+  useEffect(() => {
+    setPersistedDashboardState({
+      activeView,
+      activeSubjectId,
+      subjectSection,
+      sidebarOpen,
+      selectedBoard: activeSubject?.board || null,
+      openedPaper: openedResource.openedPaper,
+      openedTopicTest: openedResource.openedTopicTest,
+    });
+  }, [
+    activeView,
+    activeSubjectId,
+    subjectSection,
+    sidebarOpen,
+    activeSubject?.board,
+    openedResource.openedPaper,
+    openedResource.openedTopicTest,
+    setPersistedDashboardState,
+  ]);
+
   const stats = {
     completedCount:
       readStorage("alevel-dojo-completed-papers", []).length +
@@ -2277,6 +2413,33 @@ export default function Dashboard({
     setManualExams((current) => [exam, ...current]);
   }
 
+  function handlePreviewChange(resource) {
+    if (!resource) {
+      setOpenedResource({ openedPaper: null, openedTopicTest: null });
+      return;
+    }
+
+    if (resource.type === "pastPaper") {
+      setOpenedResource({ openedPaper: resource, openedTopicTest: null });
+      setSubjectSection("pastpapers");
+      return;
+    }
+
+    if (resource.type === "topicTest") {
+      setOpenedResource({ openedPaper: null, openedTopicTest: resource });
+      setSubjectSection("topictests");
+    }
+  }
+
+  function handleSubjectSectionChange(nextSection) {
+    setSubjectSection(nextSection);
+    setActiveView(nextSection === "topictests" ? "topictests" : nextSection === "pastpapers" ? "pastpapers" : "subject");
+
+    if (nextSection !== "pastpapers" && nextSection !== "topictests") {
+      setOpenedResource({ openedPaper: null, openedTopicTest: null });
+    }
+  }
+
   function toggleDraftSubject(id) {
     setDraftSelectedIds((current) =>
       current.includes(id)
@@ -2298,6 +2461,7 @@ export default function Dashboard({
   function selectView(view) {
     setActiveSubjectId(null);
     setActiveView(view);
+    setOpenedResource({ openedPaper: null, openedTopicTest: null });
 
     if ((view === "pastpapers" || view === "topictests") && activeSubjects[0]) {
       openSubject(activeSubjects[0].id, view);
@@ -2401,11 +2565,19 @@ export default function Dashboard({
                 setActiveSubjectId(null);
                 setSubjectSection("overview");
                 setActiveView("dashboard");
+                setOpenedResource({ openedPaper: null, openedTopicTest: null });
               }}
               user={user}
               onRequireLogin={onRequireLogin}
               onOpenPricing={onOpenPricing}
               initialSection={subjectSection}
+              persistedPreview={
+                subjectSection === "topictests"
+                  ? openedResource.openedTopicTest
+                  : openedResource.openedPaper
+              }
+              onPreviewChange={handlePreviewChange}
+              onSectionChange={handleSubjectSectionChange}
             />
           ) : activeView === "calendar" ? (
             <ExamCalendarPanel exams={upcomingExams} subjects={activeSubjects} onAddExam={addManualExam} />

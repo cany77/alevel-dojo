@@ -10,6 +10,7 @@ import Dashboard from "./Dashboard";
 import PublicBrowsePage from "./PublicBrowsePage";
 import OnboardingFlow from "./OnboardingFlow";
 import PricingModal from "./PricingModal";
+import usePersistentState from "./usePersistentState";
 
 const subjects = [
   {
@@ -178,6 +179,13 @@ function LegalModal({ type, onClose }) {
   );
 }
 
+function clearSavedDashboardState() {
+  try {
+    window.localStorage.removeItem("alevel-dojo-current-page");
+    window.localStorage.removeItem("alevel-dojo-dashboard-state");
+  } catch {}
+}
+
 export default function ALevelDojo() {
   const [user, setUser] = useState(null);
   const [email, setEmail] = useState("");
@@ -189,6 +197,7 @@ export default function ALevelDojo() {
   const [showFloatingMock, setShowFloatingMock] = useState(false);
   const [profile, setProfile] = useState(null);
   const [profileLoading, setProfileLoading] = useState(false);
+  const [authChecked, setAuthChecked] = useState(false);
   async function loadCompletedPapers(userId) {
   const { data, error } = await supabase
     .from("completed_papers")
@@ -210,6 +219,8 @@ async function logOut() {
   setProfile(null);
   setShowAuthModal(false);
   setShowLockedModal(false);
+  clearSavedDashboardState();
+  setPage("home");
 }
 async function loadProfile(currentUser) {
   if (!currentUser) {
@@ -275,7 +286,11 @@ async function loadProfile(currentUser) {
     if (currentUser) {
       loadProfile(currentUser);
       loadCompletedPapers(currentUser.id);
+    } else {
+      setPage("home");
     }
+
+    setAuthChecked(true);
   }
 
   getSession();
@@ -292,7 +307,11 @@ async function loadProfile(currentUser) {
       loadCompletedPapers(currentUser.id);
     } else {
       setProfile(null);
+      clearSavedDashboardState();
+      setPage("home");
     }
+
+    setAuthChecked(true);
   });
 
   return () => {
@@ -429,7 +448,7 @@ async function completeOnboarding(profileData) {
   setPage("library");
   window.scrollTo(0, 0);
 }
-const [page, setPage] = useState("home");
+const [page, setPage] = usePersistentState("alevel-dojo-current-page", "home");
 const [dashboardView, setDashboardView] = useState("overview");
 
 const [studentSubjectIds, setStudentSubjectIds] = useState(() =>
@@ -467,13 +486,6 @@ const [selectedSubject, setSelectedSubject] = useState(subjects[0]);
   const [favourites, setFavourites] = useState(() => readStorage("alevel-dojo-favourites", []));
   const [recent, setRecent] = useState(() => readStorage("alevel-dojo-recent", []));
 const [progress, setProgress] = useState(() => readStorage("alevel-dojo-progress", {}));
-
-useEffect(() => {
-  if (page === "publicBrowse" && user) {
-    setPage("library");
-    window.scrollTo(0, 0);
-  }
-}, [page, user]);
 
   const selectedSubjectBoard = selectedSubject.board;
 
@@ -1090,6 +1102,13 @@ function DashboardOverview() {
     );
   }
 
+function goHomeSection(sectionId) {
+  setPage("home");
+  window.setTimeout(() => {
+    document.getElementById(sectionId)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, 0);
+}
+
 if (page === "home") {
   
   return (
@@ -1166,6 +1185,15 @@ if (page === "publicBrowse") {
         }}
         onOpenAuth={() => setShowAuthModal(true)}
         onRequireLogin={() => setShowLockedModal(true)}
+        onOpenPricing={() => setShowPricingModal(true)}
+        onGoFeatures={() => goHomeSection("features")}
+        onGoFaqs={() => goHomeSection("faqs")}
+        onGoContact={() => goHomeSection("contact")}
+        onOpenDashboard={() => {
+          setPage("library");
+          window.scrollTo(0, 0);
+        }}
+        onLogout={logOut}
       />
 
       <AuthModal
@@ -1195,7 +1223,7 @@ if (page === "publicBrowse") {
   );
 }
 if (page === "library") {
-  if (user && profileLoading) {
+  if (!authChecked || (user && profileLoading)) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#060816] text-white">
         <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-8 text-center">
