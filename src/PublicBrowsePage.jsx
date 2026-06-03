@@ -188,8 +188,8 @@ export default function PublicBrowsePage({
               </h2>
               <p className="mt-1 text-sm text-white/42">{visibleSubjects.length} subjects available</p>
             </div>
-            <button onClick={onOpenAuth} className="inline-flex items-center gap-2 text-sm font-black text-violet-200 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:text-white">
-              Create a free account <ArrowRight size={16} />
+            <button onClick={loggedIn ? onOpenDashboard : onOpenAuth} className="inline-flex items-center gap-2 text-sm font-black text-violet-200 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:text-white">
+              {loggedIn ? "Open dashboard" : "Create a free account"} <ArrowRight size={16} />
             </button>
           </div>
 
@@ -198,7 +198,7 @@ export default function PublicBrowsePage({
               <button
                 type="button"
                 key={subject.id}
-                onClick={onRequireLogin}
+                onClick={loggedIn ? onOpenDashboard : onRequireLogin}
                 className="rounded-[1.5rem] border border-white/10 bg-slate-900/70 p-6 text-left shadow-2xl shadow-black/10 backdrop-blur-xl transition-all duration-200 ease-out hover:-translate-y-0.5 hover:border-violet-300/40 hover:bg-white/[0.055]"
               >
                 <div className="flex items-start justify-between gap-4">
