@@ -1,9 +1,10 @@
 import { papers } from "./papersData";
+import { examDates } from "./data/examDates";
 import { supabase } from "./supabaseClient";
 import PdfViewer from "./PdfViewer";
 import Watermark from "./Watermark";
 import usePersistentState from "./usePersistentState";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   BarChart3,
   BookOpen,
@@ -33,7 +34,17 @@ import {
   Edit3,
   Eye,
   ArrowLeft,
-  User,
+  Atom,
+  Calculator,
+  Code2,
+  Coins,
+  Dna,
+  Flame,
+  FlaskConical,
+  MessageCircle,
+  PenLine,
+  Star,
+  Trophy,
 } from "lucide-react";
 
 const subjectGroups = [
@@ -41,29 +52,29 @@ const subjectGroups = [
     board: "OxfordAQA",
     description: "International AQA subjects",
     subjects: [
-      { id: "physics", name: "Physics", detail: "Units 1–5, topic tests, practical skills", progress: 18 },
-      { id: "chemistry", name: "Chemistry", detail: "Physical, organic, inorganic, practical skills", progress: 0 },
-      { id: "biology", name: "Biology", detail: "Cells, molecules, genetics, physiology, ecology", progress: 0 },
-      { id: "psychology", name: "Psychology", detail: "Research methods, approaches, memory, attachment", progress: 0 },
+      { id: "physics", name: "Physics", detail: "Units 1–5, topic tests, practical skills" },
+      { id: "chemistry", name: "Chemistry", detail: "Physical, organic, inorganic, practical skills" },
+      { id: "biology", name: "Biology", detail: "Cells, molecules, genetics, physiology, ecology" },
+      { id: "psychology", name: "Psychology", detail: "Research methods, approaches, memory, attachment" },
     ],
   },
   {
     board: "Cambridge",
     description: "CAIE subjects and variants",
     subjects: [
-      { id: "computer-science", name: "Computer Science", detail: "Paper 1, Paper 2, variants 1–3", progress: 32 },
-      { id: "cambridge-maths", name: "Mathematics", detail: "Pure, statistics, mechanics", progress: 0 },
-      { id: "cambridge-physics", name: "Physics", detail: "AS/A Level structured papers", progress: 0 },
+      { id: "computer-science", name: "Computer Science", detail: "Paper 1, Paper 2, variants 1–3" },
+      { id: "cambridge-maths", name: "Mathematics", detail: "Pure, statistics, mechanics" },
+      { id: "cambridge-physics", name: "Physics", detail: "AS/A Level structured papers" },
     ],
   },
   {
     board: "Edexcel",
     description: "Pearson Edexcel subjects",
     subjects: [
-      { id: "maths", name: "Mathematics", detail: "Pure 1–4, statistics, mechanics", progress: 45 },
-      { id: "further-maths", name: "Further Mathematics", detail: "Further pure, mechanics, statistics", progress: 0 },
-      { id: "statistics", name: "Statistics", detail: "Probability, distributions, hypothesis testing", progress: 0 },
-      { id: "mechanics", name: "Mechanics", detail: "Kinematics, forces, moments, projectiles", progress: 0 },
+      { id: "maths", name: "Mathematics", detail: "Pure 1–4, statistics, mechanics" },
+      { id: "further-maths", name: "Further Mathematics", detail: "Further pure, mechanics, statistics" },
+      { id: "statistics", name: "Statistics", detail: "Probability, distributions, hypothesis testing" },
+      { id: "mechanics", name: "Mechanics", detail: "Kinematics, forces, moments, projectiles" },
     ],
   },
 ];
@@ -89,18 +100,6 @@ const boardColors = {
   },
 };
 
-const examDates = [
-  { subject: "Physics", board: "OxfordAQA", paper: "Unit 3: Fields and their consequences", date: "2026-06-01" },
-  { subject: "Chemistry", board: "OxfordAQA", paper: "Unit 4: Kinetics and equilibria", date: "2026-06-05" },
-  { subject: "Biology", board: "OxfordAQA", paper: "Unit 3: Populations and genes", date: "2026-06-09" },
-  { subject: "Psychology", board: "OxfordAQA", paper: "Paper 2: Core topics", date: "2026-06-12" },
-  { subject: "Computer Science", board: "Cambridge", paper: "Paper 3: Advanced theory", date: "2026-06-03" },
-  { subject: "Mathematics", board: "Edexcel", paper: "Pure 3", date: "2026-06-04" },
-  { subject: "Further Mathematics", board: "Edexcel", paper: "Further Pure 2", date: "2026-06-10" },
-  { subject: "Statistics", board: "Edexcel", paper: "Statistics 2", date: "2026-06-14" },
-  { subject: "Mechanics", board: "Edexcel", paper: "Mechanics 2", date: "2026-06-18" },
-];
-
 const gradeBoundaryData = [
   { year: "2023", astar: 79, a: 66, b: 54 },
   { year: "2024", astar: 82, a: 69, b: 57 },
@@ -116,11 +115,177 @@ const plans = [
 
 const userPlan = "free";
 
+const avatarStyles = [
+  { value: "initials", label: "Initials", icon: null },
+  { value: "graduation-cap", label: "Graduation cap", icon: GraduationCap },
+  { value: "book", label: "Book", icon: BookOpen },
+  { value: "paper", label: "Paper", icon: FileText },
+  { value: "calculator", label: "Calculator", icon: Calculator },
+  { value: "brain", label: "Brain", icon: Brain },
+  { value: "star", label: "Star", icon: Star },
+  { value: "flame", label: "Flame", icon: Flame },
+  { value: "trophy", label: "Trophy", icon: Trophy },
+  { value: "dojo-a", label: "Dojo A", icon: null },
+];
+
+const avatarColors = {
+  violet: "from-violet-500 to-fuchsia-400 shadow-violet-500/20",
+  cyan: "from-cyan-400 to-sky-500 shadow-cyan-500/20",
+  rose: "from-rose-400 to-pink-500 shadow-rose-500/20",
+  amber: "from-amber-300 to-orange-500 shadow-amber-500/20",
+  green: "from-emerald-400 to-teal-500 shadow-emerald-500/20",
+  blue: "from-blue-400 to-indigo-500 shadow-blue-500/20",
+};
+
+const subjectVisuals = {
+  mathematics: {
+    icon: Calculator,
+    accent: "from-violet-400 via-fuchsia-400 to-cyan-300",
+    glow: "shadow-violet-500/18",
+    soft: "bg-violet-400/12 text-violet-100 border-violet-300/20",
+    symbol: "∑",
+  },
+  "further mathematics": {
+    icon: LineChartIcon,
+    accent: "from-fuchsia-400 via-violet-400 to-cyan-300",
+    glow: "shadow-fuchsia-500/18",
+    soft: "bg-fuchsia-400/12 text-fuchsia-100 border-fuchsia-300/20",
+    symbol: "ƒ",
+  },
+  statistics: {
+    icon: BarChart3,
+    accent: "from-amber-300 via-orange-400 to-violet-400",
+    glow: "shadow-amber-500/16",
+    soft: "bg-amber-400/12 text-amber-100 border-amber-300/20",
+    symbol: "%",
+  },
+  mechanics: {
+    icon: RotateCcw,
+    accent: "from-orange-300 via-rose-400 to-violet-400",
+    glow: "shadow-orange-500/16",
+    soft: "bg-orange-400/12 text-orange-100 border-orange-300/20",
+    symbol: "→",
+  },
+  physics: {
+    icon: Atom,
+    accent: "from-cyan-300 via-blue-400 to-violet-400",
+    glow: "shadow-cyan-500/18",
+    soft: "bg-cyan-400/12 text-cyan-100 border-cyan-300/20",
+    symbol: "λ",
+  },
+  chemistry: {
+    icon: FlaskConical,
+    accent: "from-rose-300 via-pink-400 to-violet-400",
+    glow: "shadow-rose-500/18",
+    soft: "bg-rose-400/12 text-rose-100 border-rose-300/20",
+    symbol: "H₂",
+  },
+  biology: {
+    icon: Dna,
+    accent: "from-emerald-300 via-teal-400 to-cyan-300",
+    glow: "shadow-emerald-500/16",
+    soft: "bg-emerald-400/12 text-emerald-100 border-emerald-300/20",
+    symbol: "DNA",
+  },
+  psychology: {
+    icon: Brain,
+    accent: "from-purple-300 via-violet-400 to-rose-300",
+    glow: "shadow-purple-500/18",
+    soft: "bg-purple-400/12 text-purple-100 border-purple-300/20",
+    symbol: "ψ",
+  },
+  "computer science": {
+    icon: Code2,
+    accent: "from-teal-300 via-cyan-400 to-blue-400",
+    glow: "shadow-teal-500/16",
+    soft: "bg-teal-400/12 text-teal-100 border-teal-300/20",
+    symbol: "</>",
+  },
+  "english literature": {
+    icon: BookOpen,
+    accent: "from-indigo-300 via-violet-400 to-rose-300",
+    glow: "shadow-indigo-500/16",
+    soft: "bg-indigo-400/12 text-indigo-100 border-indigo-300/20",
+    symbol: "Aa",
+  },
+  "english language": {
+    icon: MessageCircle,
+    accent: "from-sky-300 via-indigo-400 to-violet-400",
+    glow: "shadow-sky-500/16",
+    soft: "bg-sky-400/12 text-sky-100 border-sky-300/20",
+    symbol: "“”",
+  },
+  economics: {
+    icon: Coins,
+    accent: "from-amber-300 via-cyan-300 to-violet-400",
+    glow: "shadow-cyan-500/16",
+    soft: "bg-cyan-400/12 text-cyan-100 border-cyan-300/20",
+    symbol: "£",
+  },
+};
+
+const defaultSubjectVisual = {
+  icon: BookOpen,
+  accent: "from-cyan-300 via-violet-400 to-rose-300",
+  glow: "shadow-violet-500/16",
+  soft: "bg-white/[0.06] text-white/75 border-white/10",
+  symbol: "A*",
+};
+
+const rankThresholds = [
+  { name: "Starter", xp: 0, accent: "from-slate-300 to-white" },
+  { name: "Bronze", xp: 250, accent: "from-amber-700 to-orange-300" },
+  { name: "Silver", xp: 750, accent: "from-slate-400 to-slate-100" },
+  { name: "Gold", xp: 1500, accent: "from-yellow-500 to-amber-200" },
+  { name: "Emerald", xp: 3000, accent: "from-emerald-500 to-cyan-200" },
+  { name: "Ruby", xp: 5000, accent: "from-rose-500 to-fuchsia-300" },
+  { name: "Diamond", xp: 8000, accent: "from-cyan-300 to-violet-200" },
+  { name: "A* Legend", xp: 12000, accent: "from-violet-400 via-fuchsia-300 to-cyan-200" },
+];
+
+const achievementDefinitions = [
+  { id: "papers-3", label: "Complete 3 papers", unlocked: (stats, xp) => stats.completedPapers >= 3 },
+  { id: "papers-10", label: "Complete 10 papers", unlocked: (stats, xp) => stats.completedPapers >= 10 },
+  { id: "mistakes-5", label: "Add 5 mistakes", unlocked: (stats, xp) => stats.mistakesCount >= 5 },
+  { id: "fixed-5", label: "Fix 5 mistakes", unlocked: (stats, xp) => stats.mistakesFixed >= 5 },
+  { id: "streak-3", label: "3 day streak", unlocked: (stats, xp) => stats.streak >= 3 },
+  { id: "streak-7", label: "7 day streak", unlocked: (stats, xp) => stats.streak >= 7 },
+  { id: "events-3", label: "Add 3 calendar events", unlocked: (stats, xp) => stats.calendarEvents >= 3 },
+  { id: "mock-3", label: "Use mock mode 3 times", unlocked: (stats, xp) => stats.mockSessions >= 3 },
+  { id: "xp-500", label: "Reach 500 XP", unlocked: (stats, xp) => xp >= 500 },
+  { id: "xp-1500", label: "Reach 1500 XP", unlocked: (stats, xp) => xp >= 1500 },
+];
+
+const calendarEventTypes = [
+  { value: "official", label: "Official exam", dot: "bg-cyan-300", chip: "border-cyan-300/25 bg-cyan-400/10 text-cyan-100" },
+  { value: "mock", label: "Mock", dot: "bg-violet-300", chip: "border-violet-300/25 bg-violet-400/10 text-violet-100" },
+  { value: "topic_test", label: "Topic test", dot: "bg-rose-300", chip: "border-rose-300/25 bg-rose-400/10 text-rose-100" },
+  { value: "revision", label: "Revision", dot: "bg-emerald-300", chip: "border-emerald-300/25 bg-emerald-400/10 text-emerald-100" },
+  { value: "reminder", label: "Reminder", dot: "bg-amber-300", chip: "border-amber-300/25 bg-amber-400/10 text-amber-100" },
+  { value: "custom", label: "Custom event", dot: "bg-white/55", chip: "border-white/10 bg-white/[0.04] text-white/65" },
+];
+
+const calendarEventColors = {
+  cyan: { label: "Cyan", dot: "bg-cyan-300", chip: "border-cyan-300/25 bg-cyan-400/10 text-cyan-100", ring: "ring-cyan-300/45" },
+  violet: { label: "Violet", dot: "bg-violet-300", chip: "border-violet-300/25 bg-violet-400/10 text-violet-100", ring: "ring-violet-300/45" },
+  rose: { label: "Rose", dot: "bg-rose-300", chip: "border-rose-300/25 bg-rose-400/10 text-rose-100", ring: "ring-rose-300/45" },
+  green: { label: "Green", dot: "bg-emerald-300", chip: "border-emerald-300/25 bg-emerald-400/10 text-emerald-100", ring: "ring-emerald-300/45" },
+  amber: { label: "Amber", dot: "bg-amber-300", chip: "border-amber-300/25 bg-amber-400/10 text-amber-100", ring: "ring-amber-300/45" },
+  blue: { label: "Blue", dot: "bg-blue-300", chip: "border-blue-300/25 bg-blue-400/10 text-blue-100", ring: "ring-blue-300/45" },
+};
+
+const defaultEventColorByType = {
+  mock: "violet",
+  topic_test: "rose",
+  revision: "green",
+  reminder: "amber",
+  custom: "cyan",
+};
+
 const defaultDashboardState = {
   activeView: "dashboard",
   activeSubjectId: null,
   subjectSection: "overview",
-  sidebarOpen: false,
   selectedBoard: null,
   openedPaper: null,
   openedTopicTest: null,
@@ -168,15 +333,271 @@ function writeStorage(key, value) {
   } catch {}
 }
 
+function readBooleanStorage(key, fallback = false) {
+  try {
+    const saved = window.localStorage.getItem(key);
+    return saved === null ? fallback : JSON.parse(saved) === true;
+  } catch {
+    return fallback;
+  }
+}
+
 function unique(values) {
   return [...new Set(values.filter(Boolean))];
 }
+
+function getRankFromXP(xp = 0) {
+  return rankThresholds.reduce((current, rank) => (xp >= rank.xp ? rank : current), rankThresholds[0]);
+}
+
+function getNextRankProgress(xp = 0) {
+  const currentRank = getRankFromXP(xp);
+  const nextRank = rankThresholds.find((rank) => rank.xp > xp) || null;
+  if (!nextRank) {
+    return { currentRank, nextRank: null, needed: 0, percent: 100 };
+  }
+
+  const currentFloor = currentRank.xp;
+  const span = nextRank.xp - currentFloor;
+  const earned = Math.max(0, xp - currentFloor);
+  return {
+    currentRank,
+    nextRank,
+    needed: Math.max(0, nextRank.xp - xp),
+    percent: Math.min(100, Math.round((earned / span) * 100)),
+  };
+}
+
+function achievementStats({ completedPaperIds = [], mistakes = [], calendarEvents = [], xpEvents = [], streak = 0 }) {
+  return {
+    completedPapers: completedPaperIds.length,
+    mistakesCount: mistakes.length,
+    mistakesFixed: mistakes.filter((mistake) => mistake.fixed).length,
+    calendarEvents: calendarEvents.length,
+    mockSessions: xpEvents.filter((event) => event.action === "mock_timer_session").length,
+    streak,
+  };
+}
+
+function getAchievements(stats, xp) {
+  return achievementDefinitions.map((achievement) => ({
+    ...achievement,
+    unlocked: achievement.unlocked(stats, xp),
+  }));
+}
+
+const sessionOrder = {
+  january: 1,
+  jan: 1,
+  february: 2,
+  feb: 2,
+  may: 3,
+  june: 4,
+  "may/june": 4,
+  october: 5,
+  oct: 5,
+  november: 6,
+  nov: 6,
+  "oct/nov": 6,
+};
+
+function sortYearsDescending(values) {
+  return [...values].sort((a, b) => Number(b) - Number(a));
+}
+
+function unitSortValue(unit = "") {
+  const match = String(unit).match(/(\d+)/);
+  const number = match ? Number(match[1]) : 999;
+  const label = String(unit).toLowerCase();
+  const prefix =
+    label.startsWith("unit") ? 1 :
+    label.startsWith("paper") ? 2 :
+    label.startsWith("pure") ? 3 :
+    label.startsWith("statistics") ? 4 :
+    label.startsWith("mechanics") ? 5 :
+    9;
+
+  return prefix * 100 + number;
+}
+
+function sortUnits(values) {
+  return [...values].sort((a, b) => unitSortValue(a) - unitSortValue(b) || String(a).localeCompare(String(b)));
+}
+
+function sortSessions(values) {
+  return [...values].sort((a, b) => {
+    const aKey = String(a).toLowerCase();
+    const bKey = String(b).toLowerCase();
+    return (sessionOrder[aKey] || 99) - (sessionOrder[bKey] || 99) || String(a).localeCompare(String(b));
+  });
+}
+
+function getSubjectPapers(subject) {
+  if (!subject) return [];
+
+  return papers.filter(
+    (paper) =>
+      paper.type === "Past Paper" &&
+      paper.board === subject.board &&
+      paper.subject === subject.name
+  );
+}
+
+function getCompletedCountForSubject(subject, completedPaperIds = []) {
+  const completedSet = new Set(completedPaperIds);
+  return getSubjectPapers(subject).filter((paper) => completedSet.has(paperId(paper))).length;
+}
+
+function getSubjectProgress(subject, completedPaperIds = []) {
+  const total = getSubjectPapers(subject).length;
+  if (!total) return 0;
+
+  return Math.round((getCompletedCountForSubject(subject, completedPaperIds) / total) * 100);
+}
+
 function daysUntil(date) {
   const today = new Date();
   const examDate = new Date(`${date}T00:00:00`);
   const diff = examDate.getTime() - today.setHours(0, 0, 0, 0);
   return Math.max(0, Math.ceil(diff / 86400000));
 }
+
+function normalizeSubjectName(value = "") {
+  const normalized = String(value)
+    .toLowerCase()
+    .replace(/&/g, "and")
+    .replace(/\bmaths\b/g, "mathematics")
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (normalized === "math" || normalized === "mathematics pure") return "mathematics";
+  return normalized;
+}
+
+function normalizeBoardName(value = "") {
+  const normalized = String(value).toLowerCase().replace(/[^a-z0-9]+/g, "");
+  if (normalized.includes("oxford") || normalized.includes("aqa")) return "oxfordaqa";
+  if (normalized.includes("cambridge") || normalized.includes("caie")) return "cambridge";
+  if (normalized.includes("edexcel") || normalized.includes("pearson")) return "edexcel";
+  return normalized;
+}
+
+function selectedSubjectEntries(selectedSubjects = []) {
+  return selectedSubjects
+    .map((item) => {
+      if (typeof item === "string") {
+        return {
+          subject: normalizeSubjectName(item),
+          board: null,
+        };
+      }
+
+      return {
+        subject: normalizeSubjectName(item.subject || item.name || item.subject_name),
+        board: item.board ? normalizeBoardName(item.board) : null,
+      };
+    })
+    .filter((item) => item.subject);
+}
+
+function examMatchesSelectedSubjects(exam, selectedSubjects = []) {
+  const selected = selectedSubjectEntries(selectedSubjects);
+  if (selected.length === 0) return false;
+
+  const examSubject = normalizeSubjectName(exam.subject);
+  const examBoard = normalizeBoardName(exam.board);
+
+  return selected.some((item) => {
+    if (item.subject !== examSubject) return false;
+    return !item.board || item.board === examBoard;
+  });
+}
+
+function examStartTime(exam) {
+  return new Date(`${exam.date}T${exam.time || "00:00"}:00`).getTime();
+}
+
+function dateKeyFromDate(date) {
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0"),
+  ].join("-");
+}
+
+function calendarTypeMeta(type = "official") {
+  return calendarEventTypes.find((item) => item.value === type) || calendarEventTypes[calendarEventTypes.length - 1];
+}
+
+function officialBoardColor(exam) {
+  const board = normalizeBoardName(exam.board);
+  if (board === "oxfordaqa") return calendarEventColors.rose;
+  if (board === "cambridge") return calendarEventColors.cyan;
+  if (board === "edexcel") return calendarEventColors.violet;
+  return calendarEventColors.cyan;
+}
+
+function calendarColorMeta(event) {
+  if (event.source_kind === "official") return officialBoardColor(event);
+  return calendarEventColors[event.color] || calendarEventColors[defaultEventColorByType[event.eventType || event.event_type] || "cyan"];
+}
+
+function toOfficialCalendarEvent(exam) {
+  return {
+    ...exam,
+    source_kind: "official",
+    event_type: "official",
+    eventType: "official",
+    title: exam.paper || exam.unit || "Official exam",
+    date: exam.date,
+    time: exam.time || "",
+  };
+}
+
+function toUserCalendarEvent(event) {
+  const eventType = event.event_type || "custom";
+  return {
+    ...event,
+    source_kind: "user",
+    eventType,
+    color: event.color || defaultEventColorByType[eventType] || "cyan",
+    date: event.event_date || event.date,
+    time: event.event_time || event.time || "",
+    paper: event.paper || event.title,
+    title: event.title || event.paper || "Calendar event",
+  };
+}
+
+function getUpcomingSelectedExams({ officialExams = [], manualExams = [], selectedSubjects = [], cambridgeZone = "" }) {
+  const todayStart = new Date().setHours(0, 0, 0, 0);
+  const normalizedZone = String(cambridgeZone || "").toLowerCase().trim();
+  const officialEvents = officialExams.map(toOfficialCalendarEvent);
+  const personalEvents = manualExams.map(toUserCalendarEvent);
+
+  return [
+    ...officialEvents.filter((exam) => {
+      if (!examMatchesSelectedSubjects(exam, selectedSubjects)) return false;
+      if (normalizeBoardName(exam.board) !== "cambridge") return true;
+      if (!exam.zone) return true;
+      return normalizedZone && String(exam.zone).toLowerCase().trim() === normalizedZone;
+    }),
+    ...personalEvents.filter((exam) => examMatchesSelectedSubjects(exam, selectedSubjects)),
+  ]
+    .filter((exam) => exam?.date && new Date(`${exam.date}T00:00:00`).getTime() >= todayStart)
+    .sort((a, b) => examStartTime(a) - examStartTime(b));
+}
+
+function getAllExamsByDate(exams = []) {
+  return exams.reduce((grouped, exam) => {
+    if (!exam?.date) return grouped;
+    grouped[exam.date] = grouped[exam.date] || [];
+    grouped[exam.date].push(exam);
+    grouped[exam.date].sort((a, b) => examStartTime(a) - examStartTime(b));
+    return grouped;
+  }, {});
+}
+
 function allSubjects() {
   return subjectGroups.flatMap((group) =>
     group.subjects.map((subject) => ({ ...subject, board: group.board }))
@@ -185,17 +606,26 @@ function allSubjects() {
 
 function profileSubjectsToIds(profileSubjects = [], subjects = []) {
   return profileSubjects
-    .map((item) => {
-      if (typeof item === "string") return item;
+    .flatMap((item) => {
+      if (typeof item === "string") {
+        const byId = subjects.find((subject) => subject.id === item);
+        if (byId) return [byId.id];
+
+        return subjects
+          .filter((subject) => normalizeSubjectName(subject.name) === normalizeSubjectName(item))
+          .map((subject) => subject.id);
+      }
 
       const subjectName = item.subject || item.name || item.subject_name;
       const board = item.board;
 
       const match = subjects.find(
-        (subject) => subject.name === subjectName && subject.board === board
+        (subject) =>
+          normalizeSubjectName(subject.name) === normalizeSubjectName(subjectName) &&
+          (!board || normalizeBoardName(subject.board) === normalizeBoardName(board))
       );
 
-      return match?.id;
+      return match ? [match.id] : [];
     })
     .filter(Boolean);
 }
@@ -322,37 +752,47 @@ function SidebarSubject({ subject, active, onOpen }) {
 }
 
 function ActiveSubjectCard({ subject, onOpen }) {
-  const colors = boardColors[subject.board];
+  const visual = subjectVisuals[normalizeSubjectName(subject.name)] || defaultSubjectVisual;
+  const Icon = visual.icon;
 
   return (
     <button
       onClick={onOpen}
-      className="group rounded-2xl border border-white/10 bg-white/[0.04] p-5 text-left transition hover:-translate-y-0.5 hover:bg-white/[0.06]"
+      className={`group relative z-0 flex min-h-[148px] overflow-hidden rounded-2xl border border-white/10 bg-slate-950/55 p-4 text-left shadow-xl ${visual.glow} transition-all duration-200 ease-out hover:-translate-y-0.5 hover:border-white/18 hover:bg-white/[0.055]`}
     >
-      <div className="mb-4 flex items-start justify-between gap-3">
-        <div>
-          <h3 className="text-xl font-black text-white">{subject.name}</h3>
-          <p className="mt-1 text-sm text-white/45">{subject.detail}</p>
+      <div className={`pointer-events-none absolute -right-8 -top-10 z-0 h-28 w-28 rounded-full bg-gradient-to-br ${visual.accent} opacity-20 blur-2xl transition-opacity duration-200 group-hover:opacity-30`} />
+      <div className="pointer-events-none absolute bottom-3 right-4 z-0 text-5xl font-black text-white/[0.035]">
+        {visual.symbol}
+      </div>
+      <div className="relative z-10 flex w-full flex-col">
+        <div className="flex items-start justify-between gap-3">
+          <div className={`flex h-11 w-11 items-center justify-center rounded-2xl border ${visual.soft}`}>
+            <Icon size={21} strokeWidth={2.3} />
+          </div>
+          <span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[10px] font-black text-white/55">
+            {subject.progress}%
+          </span>
         </div>
-        <span className={`rounded-full border px-3 py-1 text-xs font-black ${colors.chip}`}>
-          {subject.board}
-        </span>
-      </div>
 
-      <div className="mb-2 flex items-center justify-between text-xs text-white/40">
-        <span>Progress</span>
-        <span>{subject.progress}%</span>
-      </div>
-      <div className="h-2 rounded-full bg-white/10">
-        <div
-          className="h-2 rounded-full bg-gradient-to-r from-rose-400 via-fuchsia-400 to-violet-400"
-          style={{ width: `${subject.progress}%` }}
-        />
-      </div>
+        <div className="mt-3 min-w-0">
+          <h3 className="truncate text-lg font-black tracking-tight text-white">{subject.name}</h3>
+          <p className="mt-0.5 truncate text-xs font-bold text-white/42">{subject.board}</p>
+        </div>
 
-      <div className="mt-4 flex items-center justify-between text-sm font-bold text-white/55 group-hover:text-white">
-        <span>Open subject</span>
-        <ChevronRight size={17} />
+        <div className="mt-auto">
+          <div className="mb-3 h-1.5 overflow-hidden rounded-full bg-white/10">
+            <div
+              className={`h-full rounded-full bg-gradient-to-r ${visual.accent}`}
+              style={{ width: `${subject.progress}%` }}
+            />
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <span className="rounded-full border border-white/10 bg-white/[0.06] px-3 py-1.5 text-xs font-black text-white transition-all duration-200 ease-out group-hover:border-cyan-300/30 group-hover:bg-cyan-300/12 group-hover:text-cyan-100">
+              Open
+            </span>
+            <ChevronRight size={16} className="text-white/35 transition-all duration-200 group-hover:translate-x-0.5 group-hover:text-cyan-100" />
+          </div>
+        </div>
       </div>
     </button>
   );
@@ -449,17 +889,23 @@ function SubjectSetupPage({ selectedIds, onToggle, onSave }) {
 
 function DashboardShellSidebar({
   open,
+  pinned = false,
   onOpen,
   onClose,
-  onToggleOpen,
+  onTogglePinned,
   activeView,
   onSelectView,
   activeSubjects,
   onOpenSubject,
   onOpenProfile,
+  onOpenSettings,
   onOpenPricing,
   onGoHome,
+  user,
+  profile,
+  xp = 0,
 }) {
+  const [subjectsOpen, setSubjectsOpen] = useState(true);
   const nav = [
     [Home, "Dashboard", "dashboard"],
     [FileText, "Past papers", "pastpapers"],
@@ -468,71 +914,138 @@ function DashboardShellSidebar({
     [RotateCcw, "Mistakes tracker", "mistakes"],
     [LineChartIcon, "Grade boundaries", "boundaries"],
     [Brain, "AI tutor", "ai"],
-    [User, "Profile", "profile"],
-    [Settings2, "Settings", "settings"],
   ];
+  const expandedNavClass =
+    "flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-sm font-bold transition-all duration-200 ease-out hover:-translate-y-0.5";
+  const collapsedNavClass =
+    "mx-auto flex h-11 w-11 items-center justify-center rounded-xl border-0 bg-transparent p-0 text-sm font-bold transition-all duration-200 ease-out hover:-translate-y-0.5";
+  const expandedSubjectClass =
+    "flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-sm font-black text-white/62 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-white/[0.055] hover:text-white";
+  const collapsedSubjectClass =
+    "mx-auto flex h-11 w-11 items-center justify-center rounded-xl border-0 bg-transparent p-0 text-sm font-black text-white/62 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-white/[0.055] hover:text-white";
 
   return (
     <aside
       onMouseEnter={onOpen}
       onMouseLeave={onClose}
-      className={`${open ? "w-[292px]" : "w-[76px]"} hidden shrink-0 border-r border-white/10 bg-slate-950/78 p-4 backdrop-blur-xl transition-all duration-200 ease-out lg:block`}
+      className={`${open ? "w-[240px] p-3" : "w-16 px-2 py-3"} fixed left-0 top-0 z-40 hidden h-screen overflow-hidden border-r border-white/10 bg-slate-950/78 backdrop-blur-xl transition-all duration-200 ease-out lg:flex lg:flex-col`}
     >
-      <div className={`mb-5 flex items-center ${open ? "justify-between" : "justify-center"}`}>
+      <div className={`shrink-0 pb-4 ${open ? "flex items-center justify-between" : "flex flex-col items-center gap-3"}`}>
         {open && <Logo onGoHome={onGoHome} />}
         <button
-          onClick={onToggleOpen}
-          className="rounded-xl border border-white/10 bg-white/[0.035] p-2.5 text-white/55 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-white/[0.07]"
-          title={open ? "Collapse sidebar" : "Expand sidebar"}
+          onClick={onTogglePinned}
+          className="flex h-[42px] w-[42px] items-center justify-center rounded-xl border border-white/10 bg-white/[0.035] text-white/65 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-white/[0.07] hover:text-white"
+          title={pinned ? "Return to hover sidebar" : "Pin sidebar open"}
+          aria-label={pinned ? "Return to hover sidebar" : "Pin sidebar open"}
         >
-          {open ? <ChevronLeft size={18} /> : <Menu size={18} />}
+          {pinned ? <ChevronLeft size={20} /> : <Menu size={20} />}
         </button>
       </div>
 
-      <nav className="space-y-2">
-        {nav.map(([Icon, label, id]) => (
-          <button
-            key={id}
-            onClick={() => (id === "profile" ? onOpenProfile() : onSelectView(id))}
-            className={`flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-sm font-bold transition-all duration-200 ease-out hover:-translate-y-0.5 ${
-              activeView === id
+      <div className={`scrollbar-hidden min-h-0 flex-1 overflow-y-auto ${open ? "pr-1" : "px-0"}`}>
+        <nav className={open ? "space-y-1.5" : "flex flex-col items-center gap-3"}>
+          {nav.map(([Icon, label, id]) => {
+            const active = activeView === id;
+            const stateClass = active
+              ? open
                 ? "bg-cyan-300/10 text-cyan-100 ring-1 ring-cyan-300/25"
-                : "text-white/55 hover:bg-white/[0.055] hover:text-white"
-            } ${open ? "" : "justify-center"}`}
-            title={label}
-          >
-            <Icon size={18} />
-            {open && <span>{label}</span>}
-          </button>
-        ))}
-      </nav>
+                : "bg-cyan-400/10 text-cyan-200 shadow-[0_0_18px_rgba(34,211,238,0.15)]"
+              : "text-white/55 hover:bg-white/[0.055] hover:text-white";
 
-      {open && (
-        <div className="mt-7 border-t border-white/10 pt-5">
-          <p className="mb-3 text-xs font-black uppercase tracking-[0.22em] text-white/32">My subjects</p>
-          <div className="space-y-2">
-            {activeSubjects.slice(0, 4).map((subject) => (
+            return (
+              <button
+                key={id}
+                onClick={() => onSelectView(id)}
+                className={`${open ? expandedNavClass : collapsedNavClass} ${stateClass}`}
+                title={label}
+              >
+                <Icon size={open ? 18 : 22} strokeWidth={2.2} />
+                {open && <span>{label}</span>}
+              </button>
+            );
+          })}
+        </nav>
+
+        <div className="mt-5 border-t border-white/10 pt-4">
+          <button
+            onClick={() => open && setSubjectsOpen((current) => !current)}
+            className={open ? expandedSubjectClass : collapsedSubjectClass}
+            title="My subjects"
+          >
+            <GraduationCap size={open ? 18 : 22} strokeWidth={2.2} />
+            {open && (
+              <>
+                <span className="flex-1 text-left">My subjects</span>
+                <span className="rounded-full bg-white/[0.07] px-2 py-0.5 text-[10px] text-white/45">{activeSubjects.length}</span>
+                <ChevronRight size={15} className={`transition-transform ${subjectsOpen ? "rotate-90" : ""}`} />
+              </>
+            )}
+          </button>
+
+          {open && subjectsOpen && (
+            <div className="mt-2 space-y-1">
+              {activeSubjects.length === 0 ? (
+                <p className="rounded-2xl border border-white/10 bg-white/[0.035] p-3 text-xs leading-5 text-white/42">
+                  Add subjects in settings.
+                </p>
+              ) : activeSubjects.map((subject) => (
               <button
                 key={subject.id}
                 onClick={() => onOpenSubject(subject.id)}
-                className="w-full rounded-2xl border border-white/10 bg-white/[0.035] p-3 text-left transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-white/[0.06]"
+                className="w-full rounded-xl border border-white/10 bg-white/[0.035] px-2.5 py-2 text-left transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-white/[0.06]"
               >
-                <p className="truncate text-sm font-black text-white">{subject.name}</p>
-                <p className="mt-1 text-xs text-white/38">{subject.board}</p>
+                <div className="flex items-center justify-between gap-2">
+                  <p className="truncate text-xs font-black text-white">{subject.name}</p>
+                  <span className="text-[10px] font-bold text-white/35">{subject.progress}%</span>
+                </div>
+                <p className="mt-0.5 truncate text-xs text-white/38">{subject.board}</p>
+                <div className="mt-1 h-1 rounded-full bg-white/10">
+                  <div
+                    className="h-1 rounded-full bg-gradient-to-r from-rose-400 via-fuchsia-400 to-cyan-300"
+                    style={{ width: `${subject.progress}%` }}
+                  />
+                </div>
               </button>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
-      )}
+      </div>
 
-      {open && (
-        <button
-          onClick={onOpenPricing}
-          className="mt-5 w-full rounded-2xl bg-gradient-to-r from-rose-400 to-violet-500 px-4 py-3 text-sm font-black text-white shadow-lg shadow-rose-500/15 transition-all duration-200 ease-out hover:-translate-y-0.5"
-        >
-          Upgrade
-        </button>
-      )}
+      <div className={`shrink-0 border-t border-white/10 pt-3 ${open ? "" : "flex flex-col items-center gap-2"}`}>
+        {open && (
+          <button
+            onClick={onOpenPricing}
+            className="mb-3 w-full rounded-2xl bg-gradient-to-r from-rose-400 to-violet-500 px-4 py-2.5 text-sm font-black text-white shadow-lg shadow-rose-500/15 transition-all duration-200 ease-out hover:-translate-y-0.5"
+          >
+            Upgrade
+          </button>
+        )}
+        <div className={open ? "flex items-center gap-2" : "flex flex-col items-center gap-2"}>
+          <button
+            onClick={onOpenProfile}
+            className={`flex min-w-0 items-center gap-3 text-left transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-white/[0.06] ${open ? "flex-1 rounded-2xl border border-white/10 bg-white/[0.035] p-2.5" : "mx-auto h-11 w-11 justify-center rounded-xl bg-transparent p-0"}`}
+            title="Profile"
+            aria-label="Open profile"
+          >
+            <AvatarCircle profile={profile} user={user} size={open ? "h-9 w-9" : "h-9 w-9"} />
+            {open && (
+              <div className="min-w-0">
+                <p className="truncate text-sm font-black text-white">{profile?.full_name || profile?.name || user?.email || "Account"}</p>
+                <p className="truncate text-xs font-bold text-cyan-200">{getRankFromXP(xp).name}</p>
+              </div>
+            )}
+          </button>
+          <button
+            onClick={onOpenSettings}
+            className={`${open ? "h-11 w-11 rounded-2xl border border-white/10 bg-white/[0.045]" : "mx-auto h-10 w-10 rounded-xl bg-transparent"} flex shrink-0 items-center justify-center text-sm font-black text-white/65 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-white/[0.08] hover:text-white`}
+            title="Settings"
+            aria-label="Open settings"
+          >
+            <Settings2 size={open ? 19 : 20} strokeWidth={2.2} />
+          </button>
+        </div>
+      </div>
     </aside>
   );
 }
@@ -547,41 +1060,214 @@ function MetricCard({ label, value, detail, accent = "text-cyan-200" }) {
   );
 }
 
-function DashboardHome({ activeSubjects, onOpenSubject, stats, upcomingExams, onSelectView, onOpenPricing }) {
+function AvatarCircle({ profile, user, size = "h-10 w-10" }) {
+  const name = profile?.full_name || profile?.name || user?.email || "A";
+  const preferences = profile?.preferences || {};
+  const avatarStyle = preferences.avatarStyle || "initials";
+  const avatarColor = preferences.avatarColor || "violet";
+  const style = avatarStyles.find((item) => item.value === avatarStyle) || avatarStyles[0];
+  const Icon = style.icon;
+  const colorClass = avatarColors[avatarColor] || avatarColors.violet;
+  const iconSize =
+    size.includes("h-20") ? 30 :
+    size.includes("h-14") ? 24 :
+    size.includes("h-10") || size.includes("h-9") ? 20 :
+    18;
+
+  return (
+    <div className={`${size} flex shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br ${colorClass} text-sm font-black text-white shadow-lg`}>
+      {profile?.avatar_url ? (
+        <img src={profile.avatar_url} alt="" className="h-full w-full object-cover" />
+      ) : Icon ? (
+        <Icon size={iconSize} strokeWidth={2.5} />
+      ) : avatarStyle === "dojo-a" ? (
+        <span className="text-lg font-black">A</span>
+      ) : (
+        String(name).slice(0, 1).toUpperCase()
+      )}
+    </div>
+  );
+}
+
+function XPBadge({ xp, streak, onToggle, open }) {
+  const progress = getNextRankProgress(xp);
+  const xpActions = [
+    ["Complete paper", "+50 XP"],
+    ["Add mistake", "+20 XP"],
+    ["Fix mistake", "+30 XP"],
+    ["Add calendar event", "+10 XP"],
+    ["Mock session", "+25 XP"],
+    ["Daily activity", "+10 XP"],
+  ];
+
+  return (
+    <div className="relative z-[9999]">
+      <button
+        onClick={onToggle}
+        className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm font-black text-white/75 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-white/[0.07]"
+      >
+        <span className={`h-2.5 w-2.5 rounded-full bg-gradient-to-r ${progress.currentRank.accent}`} />
+        {progress.currentRank.name} · {xp} XP · {streak} day streak
+      </button>
+      {open && (
+        <div className="absolute right-0 top-[calc(100%+10px)] z-[9999] w-[22rem] rounded-3xl border border-white/10 bg-[#0b1020]/98 p-5 text-white shadow-2xl shadow-black/35 backdrop-blur-xl">
+          <p className="text-xs font-black uppercase tracking-[0.22em] text-cyan-200">XP progress</p>
+          <div className="mt-2 flex items-start justify-between gap-3">
+            <div>
+              <h3 className="text-xl font-black">{progress.currentRank.name}</h3>
+              <p className="mt-1 text-sm text-white/45">{xp} XP earned · {streak} day streak</p>
+            </div>
+            <span className={`rounded-2xl bg-gradient-to-r ${progress.currentRank.accent} px-3 py-2 text-xs font-black text-slate-950`}>
+              Rank
+            </span>
+          </div>
+          <div className="mt-4 h-2 rounded-full bg-white/10">
+            <div className="h-2 rounded-full bg-gradient-to-r from-cyan-300 via-violet-300 to-rose-300" style={{ width: `${progress.percent}%` }} />
+          </div>
+          <div className="mt-3 flex justify-between text-xs font-bold text-white/42">
+            <span>{progress.currentRank.name}</span>
+            <span>{progress.nextRank ? `${progress.needed} XP to ${progress.nextRank.name}` : "Max rank reached"}</span>
+          </div>
+          <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.035] p-4">
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-white/35">Weekly XP</p>
+            <div className="mt-3 flex h-16 items-end gap-2">
+              {[24, 44, 36, 62, 52, 74, 66].map((height, index) => (
+                <span key={index} className="flex-1 rounded-t-lg bg-gradient-to-t from-violet-400/35 to-cyan-300/70" style={{ height }} />
+              ))}
+            </div>
+          </div>
+          <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.035] p-4">
+            <p className="mb-2 text-xs font-black uppercase tracking-[0.18em] text-white/35">XP actions</p>
+            <div className="grid gap-2">
+              {xpActions.map(([label, amount]) => (
+                <div key={label} className="flex items-center justify-between text-sm">
+                  <span className="text-white/62">{label}</span>
+                  <span className="font-black text-cyan-200">{amount}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <details className="mt-4 rounded-2xl border border-cyan-300/15 bg-cyan-300/10 p-4 text-sm leading-6 text-cyan-50/75">
+            <summary className="cursor-pointer font-black">How does XP work?</summary>
+            <p className="mt-2">Complete papers, fix mistakes, use mock mode, add calendar events, and keep daily activity streaks to climb ranks.</p>
+          </details>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ProfileDropdown({
+  open,
+  user,
+  profile,
+  subjects,
+  xp,
+  streak,
+  achievements,
+  onOpenProfile,
+  onOpenSettings,
+  onOpenPricing,
+  onOpenSaved,
+  onOpenSubjects,
+  onLogout,
+}) {
+  if (!open) return null;
+  const rank = getRankFromXP(xp);
+  const name = profile?.full_name || profile?.name || user?.email || "Student";
+  const unlockedCount = achievements.filter((item) => item.unlocked).length;
+  const joined = user?.created_at
+    ? new Date(user.created_at).toLocaleDateString("en-GB", { month: "short", year: "numeric" })
+    : "Recently";
+  const links = [
+    ["Profile", onOpenProfile, "normal"],
+    ["Saved papers", onOpenSaved, "normal"],
+    ["My subjects", onOpenSubjects, "normal"],
+    ["Settings", onOpenSettings, "normal"],
+    ["Upgrade", onOpenPricing, "upgrade"],
+    ["Customer support", () => window.open("mailto:support@aleveldojo.com", "_blank"), "normal"],
+    ["Report a bug", () => window.open("mailto:support@aleveldojo.com?subject=A-Level%20Dojo%20bug", "_blank"), "bug"],
+  ];
+  const menuClass = {
+    normal: "text-white/65 hover:bg-white/[0.06] hover:text-white",
+    upgrade: "bg-gradient-to-r from-violet-500/90 to-rose-500/90 text-white shadow-lg shadow-violet-500/15 hover:brightness-110",
+    bug: "border border-amber-300/20 bg-amber-400/10 text-amber-100 hover:bg-amber-400/15",
+  };
+
+  return (
+    <div className="absolute right-0 top-[calc(100%+10px)] z-[9999] w-[22rem] rounded-3xl border border-white/10 bg-[#0b1020]/98 p-5 text-white shadow-2xl shadow-black/35 backdrop-blur-xl">
+      <div className="flex items-center gap-3">
+        <AvatarCircle profile={profile} user={user} size="h-14 w-14" />
+        <div className="min-w-0">
+          <p className="truncate text-base font-black">{name}</p>
+          <p className="truncate text-xs text-white/42">{user?.email}</p>
+          <p className="mt-1 text-xs text-white/35">Joined {joined}</p>
+        </div>
+      </div>
+      <div className="mt-4 grid grid-cols-3 gap-2">
+        <div className="rounded-2xl border border-cyan-300/15 bg-cyan-300/10 p-3">
+          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-cyan-100/60">Rank</p>
+          <p className="mt-1 truncate text-sm font-black text-white">{rank.name}</p>
+        </div>
+        <div className="rounded-2xl border border-violet-300/15 bg-violet-300/10 p-3">
+          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-violet-100/60">XP</p>
+          <p className="mt-1 text-sm font-black text-white">{xp}</p>
+        </div>
+        <div className="rounded-2xl border border-rose-300/15 bg-rose-300/10 p-3">
+          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-rose-100/60">Streak</p>
+          <p className="mt-1 text-sm font-black text-white">{streak}d</p>
+        </div>
+      </div>
+      <div className="mt-3 rounded-2xl border border-white/10 bg-white/[0.035] p-3">
+        <p className="text-xs font-black uppercase tracking-[0.18em] text-white/32">Subjects</p>
+        <p className="mt-2 line-clamp-2 text-sm leading-6 text-white/55">{subjects.map((item) => item.name).join(", ") || "None selected"}</p>
+        <p className="mt-2 text-xs font-bold text-violet-200">{unlockedCount} achievements unlocked</p>
+      </div>
+      <div className="mt-3 grid gap-1">
+        {links.map(([label, action, variant]) => (
+          <button key={label} onClick={action} className={`rounded-xl px-3 py-2 text-left text-sm font-bold transition-all duration-200 ease-out hover:-translate-y-0.5 ${menuClass[variant]}`}>
+            {label}
+          </button>
+        ))}
+        <button onClick={onLogout} className="mt-2 rounded-xl border border-rose-300/25 bg-rose-500/12 px-3 py-2 text-left text-sm font-black text-rose-100 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-rose-500/18">
+          Log out
+        </button>
+      </div>
+    </div>
+  );
+}
+function DashboardHome({
+  activeSubjects,
+  onOpenSubject,
+  stats,
+  upcomingExams,
+  onSelectView,
+  onOpenPricing,
+  needsCambridgeZone = false,
+  onOpenAllExams = () => {},
+}) {
   return (
     <>
-      <section className="mb-6 rounded-3xl border border-white/10 bg-white/[0.035] p-6">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <p className="mb-2 flex items-center gap-2 text-xs font-black uppercase tracking-[0.22em] text-cyan-200">
-              <Sparkles size={15} /> A-Level Dojo dashboard
-            </p>
-            <h2 className="text-3xl font-black tracking-tight text-white">Start where you left off.</h2>
-            <p className="mt-2 max-w-2xl text-sm leading-7 text-white/50">
-              Your subjects stay compact, your revision tools are one click away, and your progress stays visible without crowding the page.
-            </p>
-          </div>
-          <button
-            onClick={() => onSelectView("calendar")}
-            className="rounded-2xl border border-white/10 bg-white/[0.05] px-4 py-3 text-sm font-black text-white/70 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-white/[0.08]"
-          >
-            View exam calendar
-          </button>
-        </div>
-      </section>
-
       <section className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         <MetricCard label="Upcoming exams" value={upcomingExams.length} detail="Personal timetable" />
-        <MetricCard label="Continue revision" value="1 paper" detail="Resume your latest session" accent="text-violet-200" />
+        <MetricCard label="Continue revision" value={`${stats.remainingPapers} left`} detail="Uncompleted selected papers" accent="text-violet-200" />
         <MetricCard label="Mistakes to review" value={stats.mistakesOpen} detail="Unfixed questions" accent="text-rose-200" />
         <MetricCard label="Completed papers" value={stats.completedCount} detail="Marked complete" accent="text-emerald-200" />
         <MetricCard label="Saved papers" value={stats.savedCount} detail="Ready to revisit" accent="text-yellow-200" />
       </section>
 
-      <section className="mb-6">
-        <div className="mb-4 flex items-center justify-between gap-3">
-          <h2 className="text-xl font-black text-white">My subjects</h2>
-          <p className="text-sm text-white/40">Open a card for papers and topic tests</p>
+      <section className="mx-auto mb-7 max-w-6xl">
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h2 className="text-2xl font-black tracking-tight text-white">My subjects</h2>
+            <p className="mt-1 text-sm text-white/42">Open a subject for papers and topic tests.</p>
+          </div>
+          <button
+            onClick={() => onSelectView("settings")}
+            className="w-fit rounded-full border border-white/10 bg-white/[0.04] px-3.5 py-2 text-xs font-black text-cyan-100 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:border-cyan-300/30 hover:bg-cyan-300/10"
+          >
+            Change subjects
+          </button>
         </div>
         {activeSubjects.length === 0 ? (
           <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-6">
@@ -595,7 +1281,7 @@ function DashboardHome({ activeSubjects, onOpenSubject, stats, upcomingExams, on
             </button>
           </div>
         ) : (
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
             {activeSubjects.map((subject) => (
               <ActiveSubjectCard key={subject.id} subject={subject} onOpen={() => onOpenSubject(subject.id)} />
             ))}
@@ -604,107 +1290,356 @@ function DashboardHome({ activeSubjects, onOpenSubject, stats, upcomingExams, on
       </section>
 
       <section className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
-        <ExamCalendarPanel exams={upcomingExams.slice(0, 4)} compact />
+        <ExamCalendarPanel
+          exams={upcomingExams.slice(0, 4)}
+          compact
+          needsCambridgeZone={needsCambridgeZone}
+          onOpenAllExams={onOpenAllExams}
+        />
         <AiTutorPanel onUpgrade={onOpenPricing} compact />
       </section>
     </>
   );
 }
 
-function ExamCalendarPanel({ exams, compact = false, subjects = [], onAddExam = () => {} }) {
-  const [draft, setDraft] = useState({
-    subject: subjects[0]?.name || "",
-    board: subjects[0]?.board || "",
-    paper: "",
-    date: "",
+function CalendarEventModal({
+  open,
+  event = null,
+  subjects = [],
+  onClose = () => {},
+  onSave = () => {},
+}) {
+  const [form, setForm] = useState({
+    title: "",
+    event_type: "mock",
+    event_date: "",
+    event_time: "",
+    subject: "",
+    board: "",
+    notes: "",
+    color: "violet",
   });
 
   useEffect(() => {
-    if ((!draft.subject || !draft.board) && subjects[0]) {
-      setDraft((current) => ({
-        ...current,
-        subject: subjects[0].name,
-        board: subjects[0].board,
-      }));
-    }
-  }, [subjects, draft.subject, draft.board]);
+    if (!open) return;
+    const eventType = event?.event_type || event?.eventType || "mock";
+    setForm({
+      title: event?.title || "",
+      event_type: eventType,
+      event_date: event?.event_date || event?.date || "",
+      event_time: event?.event_time || event?.time || "",
+      subject: event?.subject || "",
+      board: event?.board || "",
+      notes: event?.notes || "",
+      color: event?.color || defaultEventColorByType[eventType] || "cyan",
+    });
+  }, [event, open]);
 
-  function addExam(event) {
-    event.preventDefault();
-    if (!draft.subject || !draft.board || !draft.paper.trim() || !draft.date) return;
-    onAddExam({ ...draft, manual: true, id: `manual-${Date.now()}` });
-    setDraft({
-      subject: subjects[0]?.name || "",
-      board: subjects[0]?.board || "",
-      paper: "",
-      date: "",
+  if (!open) return null;
+
+  function updateField(key, value) {
+    setForm((current) => ({
+      ...current,
+      [key]: value,
+      ...(key === "event_type" && !current.color ? { color: defaultEventColorByType[value] || "cyan" } : {}),
+    }));
+  }
+
+  function submit(eventSubmit) {
+    eventSubmit.preventDefault();
+    if (!form.title.trim() || !form.event_type || !form.event_date) return;
+    onSave({
+      ...(event || {}),
+      ...form,
+      title: form.title.trim(),
+      event_time: form.event_time || null,
+      subject: form.subject || null,
+      board: form.board || null,
+      notes: form.notes || null,
+      color: form.color || "cyan",
     });
   }
 
   return (
+    <div className="fixed inset-0 z-[1100] flex items-center justify-center bg-black/65 px-4 py-6 backdrop-blur-sm">
+      <form onSubmit={submit} className="w-full max-w-xl rounded-3xl border border-white/12 bg-[#0b1020]/96 p-6 text-white shadow-2xl shadow-black/40">
+        <div className="mb-6 flex items-start justify-between gap-4">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-cyan-200">Calendar event</p>
+            <h2 className="mt-2 text-2xl font-black tracking-tight">{event?.id ? "Edit event" : "Add event"}</h2>
+          </div>
+          <button type="button" onClick={onClose} className="rounded-2xl border border-white/10 bg-white/[0.04] p-2.5 text-white/60 hover:bg-white/[0.08] hover:text-white">
+            <X size={20} />
+          </button>
+        </div>
+
+        <div className="space-y-4">
+          <input
+            value={form.title}
+            onChange={(eventChange) => updateField("title", eventChange.target.value)}
+            placeholder="Event title"
+            className="w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white outline-none placeholder:text-white/30 focus:border-cyan-300"
+          />
+
+          <div className="grid gap-3 md:grid-cols-2">
+            <select value={form.event_type} onChange={(eventChange) => updateField("event_type", eventChange.target.value)} className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-sm font-bold text-white outline-none focus:border-cyan-300">
+              {calendarEventTypes.filter((item) => item.value !== "official").map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+            </select>
+            <input
+              type="date"
+              value={form.event_date}
+              onChange={(eventChange) => updateField("event_date", eventChange.target.value)}
+              className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-sm font-bold text-white outline-none focus:border-cyan-300"
+            />
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-2">
+            <input
+              type="time"
+              value={form.event_time || ""}
+              onChange={(eventChange) => updateField("event_time", eventChange.target.value)}
+              className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-sm font-bold text-white outline-none focus:border-cyan-300"
+            />
+            <select
+              value={`${form.board || ""}|${form.subject || ""}`}
+              onChange={(eventChange) => {
+                const [board, subject] = eventChange.target.value.split("|");
+                setForm((current) => ({ ...current, board, subject }));
+              }}
+              className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-sm font-bold text-white outline-none focus:border-cyan-300"
+            >
+              <option value="|">Subject optional</option>
+              {subjects.map((subject) => (
+                <option key={subject.id} value={`${subject.board}|${subject.name}`}>
+                  {subject.name} - {subject.board}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <textarea
+            value={form.notes || ""}
+            onChange={(eventChange) => updateField("notes", eventChange.target.value)}
+            placeholder="Notes optional"
+            rows={3}
+            className="w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-sm text-white outline-none placeholder:text-white/30 focus:border-cyan-300"
+          />
+
+          <div>
+            <p className="mb-2 text-xs font-black uppercase tracking-[0.18em] text-white/35">Color</p>
+            <div className="flex flex-wrap gap-2">
+              {Object.entries(calendarEventColors).map(([value, meta]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => updateField("color", value)}
+                  className={`inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.035] px-3 py-2 text-xs font-black text-white/65 transition-all duration-200 ease-out hover:-translate-y-0.5 ${form.color === value ? `ring-2 ${meta.ring}` : ""}`}
+                >
+                  <span className={`h-2.5 w-2.5 rounded-full ${meta.dot}`} />
+                  {meta.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-6 flex justify-end gap-3">
+          <button type="button" onClick={onClose} className="rounded-2xl border border-white/10 bg-white/[0.04] px-5 py-3 text-sm font-black text-white/65 hover:bg-white/[0.08]">
+            Cancel
+          </button>
+          <button className="rounded-2xl bg-gradient-to-r from-rose-400 to-violet-500 px-5 py-3 text-sm font-black text-white shadow-lg shadow-rose-500/15">
+            Save event
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function ExamCalendarPanel({
+  exams,
+  compact = false,
+  subjects = [],
+  onSaveEvent = () => {},
+  onDeleteEvent = () => {},
+  needsCambridgeZone = false,
+  onOpenAllExams = () => {},
+}) {
+  const [subjectFilterIds, setSubjectFilterIds] = useState(["all"]);
+  const [boardFilter, setBoardFilter] = useState("All");
+  const [typeFilter, setTypeFilter] = useState("All");
+  const [eventModalOpen, setEventModalOpen] = useState(false);
+  const [editingEvent, setEditingEvent] = useState(null);
+
+  function toggleSubjectFilter(id) {
+    setSubjectFilterIds((current) => {
+      if (id === "all") return ["all"];
+      const withoutAll = current.filter((item) => item !== "all");
+      const next = withoutAll.includes(id)
+        ? withoutAll.filter((item) => item !== id)
+        : [...withoutAll, id];
+      return next.length ? next : ["all"];
+    });
+  }
+
+  const selectedFilterSubjects = subjectFilterIds.includes("all")
+    ? subjects
+    : subjects.filter((subject) => subjectFilterIds.includes(subject.id));
+  const visibleExams = exams.filter((exam) => {
+    if (selectedFilterSubjects.length && !examMatchesSelectedSubjects(exam, selectedFilterSubjects)) return false;
+    if (boardFilter !== "All" && normalizeBoardName(exam.board) !== normalizeBoardName(boardFilter)) return false;
+    if (typeFilter !== "All" && (exam.eventType || exam.event_type) !== typeFilter) return false;
+    return true;
+  });
+
+  function openAddEvent() {
+    setEditingEvent(null);
+    setEventModalOpen(true);
+  }
+
+  function openEditEvent(event) {
+    if (event.source_kind !== "user") return;
+    setEditingEvent(event);
+    setEventModalOpen(true);
+  }
+
+  async function saveEvent(event) {
+    await onSaveEvent(event);
+    setEventModalOpen(false);
+    setEditingEvent(null);
+  }
+
+  function deleteEvent(event) {
+    if (event.source_kind !== "user") return;
+    if (!window.confirm("Delete this event?")) return;
+    onDeleteEvent(event);
+  }
+
+  return (
     <section className="rounded-3xl border border-white/10 bg-white/[0.035] p-6">
+      <CalendarEventModal
+        open={eventModalOpen}
+        event={editingEvent}
+        subjects={subjects}
+        onClose={() => {
+          setEventModalOpen(false);
+          setEditingEvent(null);
+        }}
+        onSave={saveEvent}
+      />
       <div className="mb-5 flex items-center justify-between gap-3">
         <div>
           <h2 className="text-xl font-black text-white">Exam calendar</h2>
           <p className="mt-1 text-sm text-white/42">Upcoming dates filtered to your selected subjects</p>
         </div>
-        <CalendarDays className="text-cyan-200" size={22} />
+        <div className="flex items-center gap-2">
+          {!compact && (
+            <button
+              onClick={openAddEvent}
+              className="inline-flex items-center gap-2 rounded-2xl bg-cyan-300 px-4 py-3 text-sm font-black text-slate-950 transition-all duration-200 ease-out hover:-translate-y-0.5"
+            >
+              <Plus size={16} /> Add event
+            </button>
+          )}
+          <button
+            onClick={onOpenAllExams}
+            className="rounded-2xl border border-cyan-300/20 bg-cyan-300/10 p-3 text-cyan-100 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-cyan-300/15"
+            title="Open full month calendar"
+          >
+            <CalendarDays size={22} />
+          </button>
+        </div>
       </div>
 
+      {needsCambridgeZone && (
+        <p className="mb-4 rounded-2xl border border-cyan-300/15 bg-cyan-300/10 p-4 text-sm font-bold leading-6 text-cyan-50/80">
+          Select your Cambridge exam zone in settings to see accurate Cambridge dates.
+        </p>
+      )}
+
       {!compact && (
-        <form onSubmit={addExam} className="mb-5 grid gap-3 rounded-2xl border border-white/10 bg-slate-950/45 p-4 md:grid-cols-[1fr_1fr_1fr_auto]">
-          <select
-            value={`${draft.board}|${draft.subject}`}
-            onChange={(event) => {
-              const [board, subject] = event.target.value.split("|");
-              setDraft({ ...draft, board, subject });
-            }}
-            className="rounded-xl border border-white/10 bg-slate-950 px-3 py-3 text-sm font-bold text-white outline-none focus:border-cyan-300"
-          >
-            {subjects.length === 0 ? (
-              <option value="">Add subjects in settings</option>
-            ) : (
-              subjects.map((subject) => (
-                <option key={subject.id} value={`${subject.board}|${subject.name}`}>
-                  {subject.name} - {subject.board}
-                </option>
-              ))
-            )}
-          </select>
-          <input
-            value={draft.paper}
-            onChange={(event) => setDraft({ ...draft, paper: event.target.value })}
-            placeholder="Paper, unit, or mock"
-            className="rounded-xl border border-white/10 bg-slate-950 px-3 py-3 text-sm text-white outline-none placeholder:text-white/30 focus:border-cyan-300"
-          />
-          <input
-            type="date"
-            value={draft.date}
-            onChange={(event) => setDraft({ ...draft, date: event.target.value })}
-            className="rounded-xl border border-white/10 bg-slate-950 px-3 py-3 text-sm text-white outline-none focus:border-cyan-300"
-          />
-          <button className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-300 px-4 py-3 text-sm font-black text-slate-950 transition-all duration-200 ease-out hover:-translate-y-0.5">
-            <Plus size={16} /> Add
-          </button>
-        </form>
+        <div className="mb-5 space-y-4 rounded-2xl border border-white/10 bg-slate-950/45 p-4">
+          <div>
+            <p className="mb-2 text-xs font-black uppercase tracking-[0.18em] text-white/35">Subjects</p>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => toggleSubjectFilter("all")}
+                className={`rounded-full border px-3 py-2 text-xs font-black transition-all duration-200 ease-out hover:-translate-y-0.5 ${
+                  subjectFilterIds.includes("all") ? "border-cyan-300/40 bg-cyan-300/10 text-cyan-100" : "border-white/10 bg-white/[0.035] text-white/55"
+                }`}
+              >
+                All selected
+              </button>
+              {subjects.map((subject) => (
+                <button
+                  key={subject.id}
+                  type="button"
+                  onClick={() => toggleSubjectFilter(subject.id)}
+                  className={`rounded-full border px-3 py-2 text-xs font-black transition-all duration-200 ease-out hover:-translate-y-0.5 ${
+                    subjectFilterIds.includes(subject.id) ? "border-cyan-300/40 bg-cyan-300/10 text-cyan-100" : "border-white/10 bg-white/[0.035] text-white/55"
+                  }`}
+                >
+                  {subject.name}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-2">
+            <select value={boardFilter} onChange={(event) => setBoardFilter(event.target.value)} className="rounded-xl border border-white/10 bg-slate-950 px-3 py-3 text-sm font-bold text-white outline-none focus:border-cyan-300">
+              {["All", "OxfordAQA", "Cambridge", "Edexcel"].map((item) => <option key={item}>{item}</option>)}
+            </select>
+            <select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)} className="rounded-xl border border-white/10 bg-slate-950 px-3 py-3 text-sm font-bold text-white outline-none focus:border-cyan-300">
+              <option value="All">All event types</option>
+              {calendarEventTypes.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+            </select>
+          </div>
+        </div>
       )}
 
       <div className="space-y-3">
-        {exams.length === 0 ? (
+        {visibleExams.length === 0 ? (
           <p className="rounded-2xl border border-white/10 bg-slate-950/45 p-4 text-sm text-white/45">
-            Select subjects to see upcoming exams.
+            No upcoming exams found for your selected subjects.
           </p>
         ) : (
-          exams.map((exam) => (
-            <div key={exam.id || `${exam.board}-${exam.subject}-${exam.paper}-${exam.date}`} className="grid gap-3 rounded-2xl border border-white/10 bg-slate-950/45 p-4 md:grid-cols-[1fr_auto]">
+          visibleExams.map((exam) => {
+            const typeMeta = calendarTypeMeta(exam.eventType || exam.event_type);
+            const colorMeta = calendarColorMeta(exam);
+            return (
+            <div
+              key={exam.id || `${exam.board}-${exam.subject}-${exam.paper || exam.unit}-${exam.date}`}
+              onClick={() => openEditEvent(exam)}
+              className={`grid gap-3 rounded-2xl border border-white/10 bg-slate-950/45 p-4 md:grid-cols-[1fr_auto] ${exam.source_kind === "user" ? "cursor-pointer hover:bg-white/[0.05]" : ""}`}
+            >
               <div>
-                <p className="font-black text-white">{exam.subject}</p>
-                <p className="mt-1 text-sm text-white/42">{exam.board} - {exam.paper}</p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className={`h-2.5 w-2.5 rounded-full ${colorMeta.dot}`} />
+                  <p className="font-black text-white">{exam.title || exam.paper || exam.subject}</p>
+                  <span className={`rounded-full border px-2 py-1 text-[10px] font-black ${typeMeta.chip}`}>{typeMeta.label}</span>
+                </div>
+                <p className="mt-1 text-sm text-white/42">
+                  {[exam.subject, exam.board].filter(Boolean).join(" - ")}
+                  {exam.zone ? ` - ${exam.zone}` : ""}
+                </p>
                 {!compact && (
                   <p className="mt-2 text-xs font-bold text-cyan-200">
                     {new Date(`${exam.date}T00:00:00`).toLocaleDateString()}
-                    {exam.manual ? " - added by you" : ""}
+                    {exam.time ? ` - ${exam.time}` : ""}
+                    {exam.duration ? ` - ${exam.duration}` : ""}
+                    {exam.source_kind === "user" ? " - added by you" : ""}
                   </p>
+                )}
+                {!compact && exam.source_kind === "user" && (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button onClick={(event) => { event.stopPropagation(); openEditEvent(exam); }} className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-black text-white/65 hover:bg-white/[0.08]">
+                      Edit
+                    </button>
+                    <button onClick={(event) => { event.stopPropagation(); deleteEvent(exam); }} className="rounded-xl border border-rose-300/20 bg-rose-400/10 px-3 py-2 text-xs font-black text-rose-100 hover:bg-rose-400/15">
+                      Delete
+                    </button>
+                  </div>
                 )}
               </div>
               <div className="rounded-2xl bg-cyan-300/10 px-4 py-3 text-center">
@@ -712,10 +1647,241 @@ function ExamCalendarPanel({ exams, compact = false, subjects = [], onAddExam = 
                 <p className="text-[10px] font-black uppercase tracking-[0.16em] text-cyan-200/70">days</p>
               </div>
             </div>
-          ))
+            );
+          })
         )}
       </div>
     </section>
+  );
+}
+
+function AllExamsCalendarModal({
+  open,
+  onClose,
+  exams = [],
+  subjects = [],
+  onSaveEvent = () => {},
+  onDeleteEvent = () => {},
+}) {
+  const today = new Date();
+  const [monthDate, setMonthDate] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
+  const [selectedDate, setSelectedDate] = useState(() => dateKeyFromDate(today));
+  const [editingEvent, setEditingEvent] = useState(null);
+  const [filters, setFilters] = useState({
+    board: "All",
+    subject: "All",
+    session: "All",
+    zone: "All",
+    eventType: "All",
+  });
+
+  if (!open) return null;
+
+  const boardOptions = ["All", "OxfordAQA", "Cambridge", "Edexcel"];
+  const subjectOptions = ["All", ...unique(exams.map((exam) => exam.subject)).sort((a, b) => a.localeCompare(b))];
+  const sessionOptions = ["All", ...sortSessions(unique(exams.map((exam) => exam.session)))];
+  const zoneOptions = ["All", ...unique(exams.map((exam) => exam.zone)).sort((a, b) => a.localeCompare(b))];
+
+  const filteredExams = exams.filter((exam) => {
+    if (filters.board !== "All" && exam.board !== filters.board) return false;
+    if (filters.subject !== "All" && exam.subject !== filters.subject) return false;
+    if (filters.session !== "All" && exam.session !== filters.session) return false;
+    if (filters.board === "Cambridge" && filters.zone !== "All" && exam.zone !== filters.zone) return false;
+    if (filters.eventType !== "All" && (exam.eventType || exam.event_type) !== filters.eventType) return false;
+    return true;
+  });
+
+  const examsByDate = getAllExamsByDate(filteredExams);
+  const year = monthDate.getFullYear();
+  const month = monthDate.getMonth();
+  const firstDay = new Date(year, month, 1);
+  const calendarStart = new Date(firstDay);
+  calendarStart.setDate(firstDay.getDate() - firstDay.getDay());
+
+  const days = Array.from({ length: 42 }, (_, index) => {
+    const day = new Date(calendarStart);
+    day.setDate(calendarStart.getDate() + index);
+    const dateKey = dateKeyFromDate(day);
+    return {
+      date: day,
+      dateKey,
+      inMonth: day.getMonth() === month,
+      exams: examsByDate[dateKey] || [],
+    };
+  });
+
+  const selectedExams = examsByDate[selectedDate] || [];
+  const selectedDateLabel = new Date(`${selectedDate}T00:00:00`).toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+  const monthLabel = monthDate.toLocaleDateString("en-GB", { month: "long", year: "numeric" });
+  function changeMonth(offset) {
+    setMonthDate((current) => new Date(current.getFullYear(), current.getMonth() + offset, 1));
+  }
+
+  function updateFilter(key, value) {
+    setFilters((current) => ({
+      ...current,
+      [key]: value,
+      ...(key === "board" && value !== "Cambridge" ? { zone: "All" } : {}),
+    }));
+  }
+
+  async function saveEvent(event) {
+    await onSaveEvent(event);
+    setEditingEvent(null);
+  }
+
+  function deleteEvent(event) {
+    if (event.source_kind !== "user") return;
+    if (!window.confirm("Delete this event?")) return;
+    onDeleteEvent(event);
+  }
+
+  return (
+    <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/65 px-4 py-6 backdrop-blur-sm">
+      <CalendarEventModal
+        open={Boolean(editingEvent)}
+        event={editingEvent}
+        subjects={subjects}
+        onClose={() => setEditingEvent(null)}
+        onSave={saveEvent}
+      />
+      <div className="max-h-[92vh] w-full max-w-6xl overflow-hidden rounded-3xl border border-white/12 bg-[#0b1020]/96 text-white shadow-2xl shadow-black/40">
+        <div className="flex flex-wrap items-start justify-between gap-4 border-b border-white/10 px-6 py-5">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-cyan-200">Calendar</p>
+            <h2 className="mt-2 text-2xl font-black tracking-tight">Full month calendar</h2>
+            <p className="mt-1 text-sm text-white/45">Browse official timetable dates and your saved personal study events.</p>
+          </div>
+          <button onClick={onClose} className="rounded-2xl border border-white/10 bg-white/[0.04] p-2.5 text-white/60 hover:bg-white/[0.08] hover:text-white">
+            <X size={20} />
+          </button>
+        </div>
+
+        <div className="max-h-[calc(92vh-104px)] overflow-y-auto p-6">
+          <div className="mb-5 grid gap-3 md:grid-cols-5">
+            <select value={filters.board} onChange={(event) => updateFilter("board", event.target.value)} className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-sm font-bold text-white outline-none focus:border-cyan-300">
+              {boardOptions.map((item) => <option key={item}>{item}</option>)}
+            </select>
+            <select value={filters.subject} onChange={(event) => updateFilter("subject", event.target.value)} className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-sm font-bold text-white outline-none focus:border-cyan-300">
+              {subjectOptions.map((item) => <option key={item}>{item}</option>)}
+            </select>
+            <select value={filters.session} onChange={(event) => updateFilter("session", event.target.value)} className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-sm font-bold text-white outline-none focus:border-cyan-300">
+              {sessionOptions.map((item) => <option key={item}>{item}</option>)}
+            </select>
+            <select
+              value={filters.zone}
+              onChange={(event) => updateFilter("zone", event.target.value)}
+              disabled={filters.board !== "Cambridge"}
+              className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-sm font-bold text-white outline-none focus:border-cyan-300 disabled:cursor-not-allowed disabled:opacity-45"
+            >
+              {zoneOptions.map((item) => <option key={item}>{item}</option>)}
+            </select>
+            <select value={filters.eventType} onChange={(event) => updateFilter("eventType", event.target.value)} className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-sm font-bold text-white outline-none focus:border-cyan-300">
+              <option value="All">All event types</option>
+              {calendarEventTypes.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+            </select>
+          </div>
+
+          <div className="grid gap-5 xl:grid-cols-[1.35fr_0.85fr]">
+            <section className="rounded-3xl border border-white/10 bg-white/[0.035] p-4">
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <button onClick={() => changeMonth(-1)} className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-2 text-sm font-black text-white/70 hover:bg-white/[0.08]">
+                  Previous
+                </button>
+                <h3 className="text-lg font-black text-white">{monthLabel}</h3>
+                <button onClick={() => changeMonth(1)} className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-2 text-sm font-black text-white/70 hover:bg-white/[0.08]">
+                  Next
+                </button>
+              </div>
+
+              <div className="grid grid-cols-7 gap-2 text-center text-[11px] font-black uppercase tracking-[0.12em] text-white/35">
+                {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => <div key={day}>{day}</div>)}
+              </div>
+              <div className="mt-2 grid grid-cols-7 gap-2">
+                {days.map((day) => {
+                  const selected = day.dateKey === selectedDate;
+                  return (
+                    <button
+                      key={day.dateKey}
+                      onClick={() => setSelectedDate(day.dateKey)}
+                      className={`min-h-[88px] rounded-2xl border p-2 text-left transition-all duration-200 ease-out hover:-translate-y-0.5 ${
+                        selected
+                          ? "border-cyan-300/50 bg-cyan-300/10"
+                          : day.exams.length
+                            ? "border-white/12 bg-white/[0.055]"
+                            : "border-white/8 bg-slate-950/35"
+                      } ${day.inMonth ? "opacity-100" : "opacity-35"}`}
+                    >
+                      <span className="text-sm font-black text-white/75">{day.date.getDate()}</span>
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        {day.exams.slice(0, 5).map((exam) => (
+                          <span
+                            key={exam.id}
+                            className={`h-2 w-2 rounded-full ${calendarColorMeta(exam).dot}`}
+                            title={`${calendarTypeMeta(exam.eventType || exam.event_type).label} ${exam.subject || ""}`}
+                          />
+                        ))}
+                        {day.exams.length > 5 && <span className="text-[10px] font-black text-white/40">+{day.exams.length - 5}</span>}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+
+            <section className="rounded-3xl border border-white/10 bg-white/[0.035] p-5">
+              <h3 className="text-lg font-black text-white">{selectedDateLabel}</h3>
+              <p className="mt-1 text-sm text-white/42">{selectedExams.length} exams on this day</p>
+              <div className="mt-4 max-h-[520px] space-y-3 overflow-y-auto pr-1">
+                {selectedExams.length === 0 ? (
+                  <p className="rounded-2xl border border-white/10 bg-slate-950/45 p-4 text-sm text-white/45">No exams match the current filters for this day.</p>
+                ) : (
+                  selectedExams.map((exam) => (
+                    <div
+                      key={exam.id}
+                      onClick={() => exam.source_kind === "user" && setEditingEvent(exam)}
+                      className={`rounded-2xl border border-white/10 bg-slate-950/45 p-4 ${exam.source_kind === "user" ? "cursor-pointer hover:bg-white/[0.05]" : ""}`}
+                    >
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className={`rounded-full border px-2 py-1 text-[10px] font-black ${calendarTypeMeta(exam.eventType || exam.event_type).chip}`}>
+                          {calendarTypeMeta(exam.eventType || exam.event_type).label}
+                        </span>
+                        <span className={`h-2.5 w-2.5 rounded-full ${calendarColorMeta(exam).dot}`} />
+                        <span className="rounded-full border border-white/10 bg-white/[0.04] px-2 py-1 text-[10px] font-black text-white/60">
+                          {exam.board}{exam.zone ? ` ${exam.zone}` : ""}
+                        </span>
+                        <span className="text-xs font-black text-white/38">{exam.session}</span>
+                      </div>
+                      <p className="mt-3 font-black text-white">{exam.subject}</p>
+                      <p className="mt-1 text-sm leading-6 text-white/48">
+                        {exam.title || exam.paper || exam.unit || "Exam"}
+                        {exam.time ? ` - ${exam.time}` : ""}
+                        {exam.duration ? ` - ${exam.duration}` : ""}
+                      </p>
+                      {exam.notes && <p className="mt-2 text-xs leading-5 text-white/35">{exam.notes}</p>}
+                      {exam.source_kind === "user" && (
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <button onClick={(event) => { event.stopPropagation(); setEditingEvent(exam); }} className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-black text-white/65 hover:bg-white/[0.08]">
+                            Edit
+                          </button>
+                          <button onClick={(event) => { event.stopPropagation(); deleteEvent(exam); }} className="rounded-xl border border-rose-300/20 bg-rose-400/10 px-3 py-2 text-xs font-black text-rose-100 hover:bg-rose-400/15">
+                            Delete
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+            </section>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -839,7 +2005,7 @@ function GradeBoundariesPanel({ subjects = [] }) {
   );
 }
 
-function MistakesTrackerPanel({ mistakes, setMistakes, subjects = [] }) {
+function MistakesTrackerPanel({ mistakes, setMistakes, subjects = [], onAwardXP = () => {} }) {
   const subjectOptions = subjects.length ? subjects : allSubjects();
   const emptyDraft = {
     subject: subjectOptions[0]?.name || "",
@@ -870,13 +2036,19 @@ function MistakesTrackerPanel({ mistakes, setMistakes, subjects = [] }) {
       setMistakes(mistakes.map((mistake) => mistake.id === editingId ? { ...mistake, ...draft } : mistake));
       setEditingId(null);
     } else {
-      setMistakes([{ id: Date.now(), createdAt: new Date().toISOString(), ...draft }, ...mistakes]);
+      const id = Date.now();
+      setMistakes([{ id, createdAt: new Date().toISOString(), ...draft }, ...mistakes]);
+      onAwardXP("add_mistake", 20, { key: `mistake-${id}`, id });
+      if (draft.fixed) onAwardXP("fix_mistake", 30, { key: `mistake-fixed-${id}`, id });
     }
     setDraft(emptyDraft);
   }
 
   function toggleFixed(id) {
-    setMistakes(mistakes.map((mistake) => mistake.id === id ? { ...mistake, fixed: !mistake.fixed } : mistake));
+    const target = mistakes.find((mistake) => mistake.id === id);
+    const nextFixed = !target?.fixed;
+    setMistakes(mistakes.map((mistake) => mistake.id === id ? { ...mistake, fixed: nextFixed } : mistake));
+    if (nextFixed) onAwardXP("fix_mistake", 30, { key: `mistake-fixed-${id}`, id });
   }
 
   function editMistake(mistake) {
@@ -1088,25 +2260,45 @@ function AiTutorPanel({ onUpgrade, compact = false }) {
   );
 }
 
-function ProfileModal({ open, onClose, user, subjects, stats, mistakes, onLogout }) {
+function ProfileModal({ open, onClose, user, profile, subjects, stats, mistakes, achievements = [], xp = 0, streak = 0, onLogout }) {
   if (!open) return null;
+  const rank = getRankFromXP(xp);
+  const joined = user?.created_at
+    ? new Date(user.created_at).toLocaleDateString("en-GB", { month: "long", year: "numeric" })
+    : "Recently";
   return (
     <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/60 px-4 backdrop-blur-sm">
-      <div className="w-full max-w-3xl rounded-3xl border border-white/10 bg-[#0d1224] p-6 text-white shadow-2xl">
+      <div className="max-h-[88vh] w-full max-w-4xl overflow-y-auto rounded-3xl border border-white/10 bg-[#0d1224] p-6 text-white shadow-2xl">
         <div className="flex items-start justify-between gap-4">
-          <div>
-            <h2 className="text-2xl font-black">Profile</h2>
-            <p className="mt-1 text-sm text-white/45">{user?.email || "Signed in student"}</p>
+          <div className="flex items-center gap-4">
+            <AvatarCircle profile={profile} user={user} size="h-20 w-20" />
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.22em] text-cyan-200">Student profile</p>
+              <h2 className="mt-2 text-3xl font-black">{profile?.full_name || profile?.name || "A-Level Dojo student"}</h2>
+              <p className="mt-1 text-sm text-white/45">{user?.email || "Signed in student"} · Joined {joined}</p>
+            </div>
           </div>
           <button onClick={onClose} className="rounded-xl p-2 text-white/50 hover:bg-white/[0.06]"><X size={20} /></button>
         </div>
-        <div className="mt-5 grid gap-3 md:grid-cols-3">
-          <MetricCard label="Study streak" value="2 days" detail="Current streak" />
+        <div className="mt-6 grid gap-3 md:grid-cols-4">
+          <MetricCard label="Rank" value={rank.name} detail={`${xp} XP`} />
+          <MetricCard label="Study streak" value={`${streak} days`} detail="Current streak" />
           <MetricCard label="Completed papers" value={stats.completedCount} detail="Across subjects" accent="text-emerald-200" />
-          <MetricCard label="Mistakes count" value={mistakes.length} detail="Saved reviews" accent="text-rose-200" />
-          <MetricCard label="Perfected topics" value="0" detail="Coming soon" accent="text-violet-200" />
+          <MetricCard label="Mistakes fixed" value={mistakes.filter((item) => item.fixed).length} detail="Reviewed mistakes" accent="text-rose-200" />
+          <MetricCard label="School" value={profile?.school_name || "Not set"} detail="Editable in settings" accent="text-violet-200" />
           <MetricCard label="Selected subjects" value={subjects.length} detail={subjects.map((item) => item.name).join(", ") || "None"} accent="text-cyan-200" />
           <MetricCard label="Refer a friend" value="dojo.link/ref" detail="Share A-Level Dojo" accent="text-yellow-200" />
+        </div>
+        <div className="mt-6 rounded-3xl border border-white/10 bg-slate-950/45 p-5">
+          <h3 className="font-black text-white">Achievements</h3>
+          <div className="mt-4 grid gap-2 md:grid-cols-2">
+            {achievements.map((achievement) => (
+              <div key={achievement.id} className={`rounded-2xl border p-3 ${achievement.unlocked ? "border-cyan-300/25 bg-cyan-300/10" : "border-white/10 bg-white/[0.035]"}`}>
+                <p className="font-black text-white">{achievement.label}</p>
+                <p className={`mt-1 text-xs font-bold ${achievement.unlocked ? "text-cyan-200" : "text-white/35"}`}>{achievement.unlocked ? "Unlocked" : "Locked"}</p>
+              </div>
+            ))}
+          </div>
         </div>
         <button onClick={onLogout} className="mt-5 inline-flex items-center gap-2 rounded-2xl bg-rose-500 px-5 py-3 text-sm font-black text-white">
           <LogOut size={16} /> Log out
@@ -1118,97 +2310,203 @@ function ProfileModal({ open, onClose, user, subjects, stats, mistakes, onLogout
 
 function ProfileSettingsPanel({
   profile,
+  user,
   allSubjectsList,
   draftSelectedIds,
   onToggleSubject,
   onSaveSubjects,
   onSaveProfile,
+  stats,
+  achievements = [],
+  xp = 0,
+  streak = 0,
+  onOpenPricing = () => {},
 }) {
+  const preferenceDefaults = {
+    theme: "dark",
+    show_xp: true,
+    show_streaks: true,
+    sound_effects: false,
+    email_notifications: true,
+    product_updates: true,
+    marketing_emails: false,
+    avatarStyle: "initials",
+    avatarColor: "violet",
+  };
   const [form, setForm] = useState({
     full_name: profile?.full_name || "",
+    school_name: profile?.school_name || "",
     year_group: profile?.year_group || "Year 13",
     target_grade: profile?.target_grade || "A",
     predicted_grade: profile?.predicted_grade || "",
+    cambridge_zone: profile?.cambridge_zone || profile?.exam_zone || "",
+    preferences: { ...preferenceDefaults, ...(profile?.preferences || {}) },
   });
+  const selectedSubjects = allSubjectsList.filter((subject) => draftSelectedIds.includes(subject.id));
+  const rank = getRankFromXP(xp);
 
   async function saveAll() {
-    const selectedSubjects = allSubjectsList
-      .filter((subject) => draftSelectedIds.includes(subject.id))
+    const savedSubjects = selectedSubjects
       .map((subject) => ({ board: subject.board, subject: subject.name }));
+    const hasCambridgeSubject = savedSubjects.some((subject) => subject.board === "Cambridge");
 
     await onSaveProfile({
       ...profile,
       ...form,
-      subjects: selectedSubjects,
-      selected_subjects: selectedSubjects,
+      subjects: savedSubjects,
+      selected_subjects: savedSubjects,
       predicted_grade: form.predicted_grade || null,
+      cambridge_zone: hasCambridgeSubject ? form.cambridge_zone || null : null,
       onboarding_completed: true,
     });
     await onSaveSubjects();
   }
 
+  function updatePreference(key, value) {
+    setForm((current) => ({
+      ...current,
+      preferences: {
+        ...current.preferences,
+        [key]: value,
+      },
+    }));
+  }
+
+  const SettingCard = ({ title, children }) => (
+    <section className="rounded-3xl border border-white/10 bg-white/[0.035] p-5">
+      <h3 className="text-lg font-black text-white">{title}</h3>
+      <div className="mt-4">{children}</div>
+    </section>
+  );
+
+  const Toggle = ({ label, value, onChange }) => (
+    <label className="flex items-center justify-between gap-4 rounded-2xl border border-white/10 bg-slate-950/45 px-4 py-3 text-sm font-bold text-white/65">
+      {label}
+      <input type="checkbox" checked={value} onChange={(event) => onChange(event.target.checked)} className="h-4 w-4 accent-cyan-300" />
+    </label>
+  );
+  const previewProfile = { ...profile, preferences: form.preferences };
+
   return (
-    <section className="rounded-3xl border border-white/10 bg-white/[0.035] p-6">
+    <section className="space-y-5">
       <div className="mb-6">
-        <h2 className="text-xl font-black text-white">Settings</h2>
-        <p className="mt-1 text-sm text-white/42">Edit your onboarding details, profile, and selected subjects.</p>
+        <p className="text-xs font-black uppercase tracking-[0.22em] text-cyan-200">Account center</p>
+        <h2 className="mt-2 text-3xl font-black text-white">Settings</h2>
+        <p className="mt-1 text-sm text-white/42">Manage your account, subjects, plan, preferences, security, and progress.</p>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2">
-        <input
-          value={form.full_name}
-          onChange={(event) => setForm({ ...form, full_name: event.target.value })}
-          placeholder="Name"
-          className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-4 text-white outline-none placeholder:text-white/30 focus:border-cyan-300"
-        />
-        <select
-          value={form.year_group}
-          onChange={(event) => setForm({ ...form, year_group: event.target.value })}
-          className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-4 text-white outline-none focus:border-cyan-300"
-        >
-          {["Year 12", "Year 13", "Private candidate", "Other"].map((item) => <option key={item}>{item}</option>)}
-        </select>
-        <select
-          value={form.target_grade}
-          onChange={(event) => setForm({ ...form, target_grade: event.target.value })}
-          className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-4 text-white outline-none focus:border-cyan-300"
-        >
-          {["E", "D", "C", "B", "A", "A*"].map((item) => <option key={item}>{item}</option>)}
-        </select>
-        <select
-          value={form.predicted_grade || ""}
-          onChange={(event) => setForm({ ...form, predicted_grade: event.target.value })}
-          className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-4 text-white outline-none focus:border-cyan-300"
-        >
-          <option value="">Predicted grade (optional)</option>
-          {["E", "D", "C", "B", "A", "A*"].map((item) => <option key={item}>{item}</option>)}
-        </select>
-      </div>
-
-      <div className="mt-8 space-y-6">
-        {subjectGroups.map((group) => (
-          <section key={group.board}>
-            <h3 className="mb-3 font-black text-white">{group.board}</h3>
-            <div className="flex flex-wrap gap-2">
-              {group.subjects.map((subject) => {
-                const selected = draftSelectedIds.includes(subject.id);
+      <div className="grid gap-5 xl:grid-cols-2">
+        <SettingCard title="Account">
+          <div className="mb-4 flex items-center gap-4">
+            <AvatarCircle profile={previewProfile} user={user} size="h-16 w-16" />
+            <div>
+              <p className="font-black text-white">{form.full_name || "Name not set"}</p>
+              <p className="text-sm text-white/42">{user?.email}</p>
+            </div>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            <input value={form.full_name} onChange={(event) => setForm({ ...form, full_name: event.target.value })} placeholder="Name" className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-4 text-white outline-none placeholder:text-white/30 focus:border-cyan-300" />
+            <input value={form.school_name} onChange={(event) => setForm({ ...form, school_name: event.target.value })} placeholder="School name" className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-4 text-white outline-none placeholder:text-white/30 focus:border-cyan-300" />
+            <select value={form.year_group} onChange={(event) => setForm({ ...form, year_group: event.target.value })} className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-4 text-white outline-none focus:border-cyan-300">{["Year 12", "Year 13", "Private candidate", "Other"].map((item) => <option key={item}>{item}</option>)}</select>
+            <select value={form.target_grade} onChange={(event) => setForm({ ...form, target_grade: event.target.value })} className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-4 text-white outline-none focus:border-cyan-300">{["E", "D", "C", "B", "A", "A*"].map((item) => <option key={item}>{item}</option>)}</select>
+            <select value={form.predicted_grade || ""} onChange={(event) => setForm({ ...form, predicted_grade: event.target.value })} className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-4 text-white outline-none focus:border-cyan-300"><option value="">Predicted grade optional</option>{["E", "D", "C", "B", "A", "A*"].map((item) => <option key={item}>{item}</option>)}</select>
+            <select value={form.cambridge_zone || ""} onChange={(event) => setForm({ ...form, cambridge_zone: event.target.value })} className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-4 text-white outline-none focus:border-cyan-300"><option value="">Cambridge exam zone</option>{["Zone 1", "Zone 2", "Zone 3", "Zone 4", "Zone 5", "Zone 6"].map((zone) => <option key={zone}>{zone}</option>)}</select>
+          </div>
+          <div className="mt-5 rounded-2xl border border-white/10 bg-slate-950/45 p-4">
+            <p className="text-sm font-black text-white">Choose avatar</p>
+            <div className="mt-3 grid grid-cols-5 gap-2">
+              {avatarStyles.map((option) => {
+                const Icon = option.icon;
+                const selected = form.preferences.avatarStyle === option.value;
                 return (
                   <button
-                    key={subject.id}
-                    onClick={() => onToggleSubject(subject.id)}
-                    className={`rounded-full border px-4 py-2 text-sm font-black transition-all duration-200 ease-out hover:-translate-y-0.5 ${
-                      selected
-                        ? "border-cyan-300/40 bg-cyan-300/10 text-cyan-100"
-                        : "border-white/10 bg-white/[0.035] text-white/55 hover:bg-white/[0.06]"
+                    key={option.value}
+                    onClick={() => updatePreference("avatarStyle", option.value)}
+                    className={`flex aspect-square items-center justify-center rounded-2xl border text-sm font-black transition-all duration-200 ease-out hover:-translate-y-0.5 ${
+                      selected ? "border-cyan-300/60 bg-cyan-300/10 text-cyan-100" : "border-white/10 bg-white/[0.035] text-white/55 hover:bg-white/[0.06]"
                     }`}
+                    title={option.label}
                   >
-                    {subject.name}
+                    {Icon ? <Icon size={19} /> : option.value === "dojo-a" ? "A" : (form.full_name || user?.email || "A").slice(0, 1).toUpperCase()}
                   </button>
                 );
               })}
             </div>
-          </section>
-        ))}
+            <p className="mt-4 text-xs font-black uppercase tracking-[0.18em] text-white/35">Avatar color</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {Object.entries(avatarColors).map(([value, colorClass]) => (
+                <button
+                  key={value}
+                  onClick={() => updatePreference("avatarColor", value)}
+                  className={`h-8 w-8 rounded-full bg-gradient-to-br ${colorClass} transition-all duration-200 ease-out hover:-translate-y-0.5 ${
+                    form.preferences.avatarColor === value ? "ring-2 ring-cyan-300 ring-offset-2 ring-offset-slate-950" : "ring-1 ring-white/10"
+                  }`}
+                  title={value}
+                />
+              ))}
+            </div>
+          </div>
+        </SettingCard>
+
+        <SettingCard title="Subjects">
+          <div className="mb-4 flex flex-wrap gap-2">{selectedSubjects.map((subject) => <span key={subject.id} className="rounded-full border border-cyan-300/25 bg-cyan-300/10 px-3 py-2 text-xs font-black text-cyan-100">{subject.name} · {subject.board}</span>)}</div>
+          <div className="space-y-5">
+            {subjectGroups.map((group) => (
+              <section key={group.board}>
+                <h4 className="mb-2 text-sm font-black text-white/75">{group.board}</h4>
+                <div className="flex flex-wrap gap-2">
+                  {group.subjects.map((subject) => {
+                    const selected = draftSelectedIds.includes(subject.id);
+                    return <button key={subject.id} onClick={() => onToggleSubject(subject.id)} className={`rounded-full border px-4 py-2 text-sm font-black transition-all duration-200 ease-out hover:-translate-y-0.5 ${selected ? "border-cyan-300/40 bg-cyan-300/10 text-cyan-100" : "border-white/10 bg-white/[0.035] text-white/55 hover:bg-white/[0.06]"}`}>{subject.name}</button>;
+                  })}
+                </div>
+              </section>
+            ))}
+          </div>
+        </SettingCard>
+
+        <SettingCard title="Plan">
+          <div className="rounded-2xl border border-cyan-300/20 bg-cyan-300/10 p-4">
+            <p className="font-black text-white">Current plan: Free</p>
+            <p className="mt-1 text-sm text-white/45">Billing and subscription controls will appear here when paid plans launch.</p>
+          </div>
+          <button onClick={onOpenPricing} className="mt-4 rounded-2xl bg-gradient-to-r from-rose-400 to-violet-500 px-5 py-3 text-sm font-black text-white">Upgrade</button>
+        </SettingCard>
+
+        <SettingCard title="Preferences">
+          <div className="grid gap-3">
+            <select value={form.preferences.theme} onChange={(event) => updatePreference("theme", event.target.value)} className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white outline-none"><option value="dark">Dark</option><option value="light">Light</option><option value="system">System</option></select>
+            <Toggle label="Show XP" value={form.preferences.show_xp} onChange={(value) => updatePreference("show_xp", value)} />
+            <Toggle label="Show streaks" value={form.preferences.show_streaks} onChange={(value) => updatePreference("show_streaks", value)} />
+            <Toggle label="Sound effects" value={form.preferences.sound_effects} onChange={(value) => updatePreference("sound_effects", value)} />
+            <Toggle label="Email notifications" value={form.preferences.email_notifications} onChange={(value) => updatePreference("email_notifications", value)} />
+            <Toggle label="Product updates" value={form.preferences.product_updates} onChange={(value) => updatePreference("product_updates", value)} />
+            <Toggle label="Marketing emails" value={form.preferences.marketing_emails} onChange={(value) => updatePreference("marketing_emails", value)} />
+          </div>
+        </SettingCard>
+
+        <SettingCard title="Security">
+          <div className="space-y-3 text-sm text-white/50">
+            <p className="rounded-2xl border border-white/10 bg-slate-950/45 p-4">Active sessions placeholder</p>
+            <button className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 font-black text-white/65">Sign out of all devices</button>
+            <button className="ml-2 rounded-2xl border border-rose-300/20 bg-rose-400/10 px-4 py-3 font-black text-rose-100">Delete account</button>
+            <button className="ml-2 rounded-2xl border border-rose-300/20 bg-rose-400/10 px-4 py-3 font-black text-rose-100">Reset progress</button>
+          </div>
+        </SettingCard>
+
+        <SettingCard title="Progress">
+          <div className="grid gap-3 md:grid-cols-3">
+            <MetricCard label="Rank" value={rank.name} detail={`${xp} XP`} />
+            <MetricCard label="Streak" value={`${streak} days`} detail="Current streak" accent="text-violet-200" />
+            <MetricCard label="Completed" value={stats.completedCount} detail="Papers/tests" accent="text-emerald-200" />
+          </div>
+          <div className="mt-4 flex h-20 items-end gap-2 rounded-2xl border border-white/10 bg-slate-950/45 p-4">
+            {[34, 50, 42, 72, 64, 86, 76].map((height, index) => <span key={index} className="flex-1 rounded-t-lg bg-gradient-to-t from-violet-400/35 to-cyan-300/70" style={{ height }} />)}
+          </div>
+          <div className="mt-4 grid gap-2 md:grid-cols-2">
+            {achievements.map((achievement) => <div key={achievement.id} className={`rounded-2xl border p-3 text-sm font-bold ${achievement.unlocked ? "border-cyan-300/25 bg-cyan-300/10 text-cyan-100" : "border-white/10 bg-white/[0.035] text-white/40"}`}>{achievement.label}</div>)}
+          </div>
+        </SettingCard>
       </div>
 
       <button
@@ -1226,6 +2524,9 @@ function PastPapersPanel({
   onRequireLogin,
   persistedPreview = null,
   onPreviewChange = () => {},
+  completedPaperIds = [],
+  onCompletedPaperIdsChange = () => {},
+  onAwardXP = () => {},
 }) {
   const [activePreview, setActivePreview] = useState(null);
   const [showMarkScheme, setShowMarkScheme] = useState(false);
@@ -1237,20 +2538,11 @@ function PastPapersPanel({
   const [selectedSession, setSelectedSession] = useState("All sessions");
   const [completionFilter, setCompletionFilter] = useState("All papers");
 
-  const [completedPaperIds, setCompletedPaperIds] = useState(() =>
-    readStorage("alevel-dojo-completed-papers", [])
-  );
-
   const [savedPaperIds, setSavedPaperIds] = useState(() =>
     readStorage("alevel-dojo-favourites", [])
   );
 
-  const subjectPastPapers = papers.filter(
-    (paper) =>
-      paper.type === "Past Paper" &&
-      paper.board === subject.board &&
-      paper.subject === subject.name
-  );
+  const subjectPastPapers = getSubjectPapers(subject);
 
   useEffect(() => {
     if (persistedPreview?.type !== "pastPaper") return;
@@ -1293,17 +2585,17 @@ function PastPapersPanel({
 
   const availableUnits = [
     "All units",
-    ...unique(subjectPastPapers.map((paper) => paper.unit)),
+    ...sortUnits(unique(subjectPastPapers.map((paper) => paper.unit))),
   ];
 
   const availableYears = [
     "All years",
-    ...unique(subjectPastPapers.map((paper) => paper.year)),
+    ...sortYearsDescending(unique(subjectPastPapers.map((paper) => paper.year))),
   ];
 
   const availableSessions = [
     "All sessions",
-    ...unique(subjectPastPapers.map((paper) => paper.session)),
+    ...sortSessions(unique(subjectPastPapers.map((paper) => paper.session))),
   ];
 
   const filteredPapers = subjectPastPapers.filter((paper) => {
@@ -1334,15 +2626,32 @@ function PastPapersPanel({
 
     action();
     }
-  function toggleCompleted(paper) {
+  async function toggleCompleted(paper) {
     const id = paperId(paper);
+    const exists = completedPaperIds.includes(id);
 
-    const next = completedPaperIds.includes(id)
+    const next = exists
       ? completedPaperIds.filter((item) => item !== id)
       : [...completedPaperIds, id];
 
-    setCompletedPaperIds(next);
+    onCompletedPaperIdsChange(next);
     writeStorage("alevel-dojo-completed-papers", next);
+
+    if (!user) return;
+
+    if (exists) {
+      await supabase
+        .from("completed_papers")
+        .delete()
+        .eq("user_id", user.id)
+        .eq("paper_id", id);
+    } else {
+      await supabase.from("completed_papers").insert({
+        user_id: user.id,
+        paper_id: id,
+      });
+      onAwardXP("complete_paper", 50, { key: `paper-${id}`, paperId: id, subject: paper.subject, board: paper.board });
+    }
   }
 
   function toggleSaved(paper) {
@@ -1685,6 +2994,7 @@ function TopicTestsPanel({
   onRequireLogin,
   persistedPreview = null,
   onPreviewChange = () => {},
+  onAwardXP = () => {},
 }) {
   const [activePreview, setActivePreview] = useState(null);
   const [testSearch, setTestSearch] = useState("");
@@ -1774,13 +3084,15 @@ function TopicTestsPanel({
     }
   function toggleCompleted(paper) {
     const id = paperId(paper);
+    const alreadyCompleted = completedTestIds.includes(id);
 
-    const next = completedTestIds.includes(id)
+    const next = alreadyCompleted
       ? completedTestIds.filter((item) => item !== id)
       : [...completedTestIds, id];
 
     setCompletedTestIds(next);
     writeStorage("alevel-dojo-completed-topic-tests", next);
+    if (!alreadyCompleted) onAwardXP("complete_topic_test", 40, { key: `topic-test-${id}`, paperId: id, subject: paper.subject, board: paper.board });
   }
 
   function toggleSaved(paper) {
@@ -2013,12 +3325,13 @@ function TopicTestsPanel({
     </div>
   );
 }
-function MockModePanel({ subject }) {
+function MockModePanel({ subject, onAwardXP = () => {} }) {
   const [baseMinutes, setBaseMinutes] = useState(90);
   const [extraTime, setExtraTime] = useState(0);
   const [secondsLeft, setSecondsLeft] = useState(90 * 60);
   const [running, setRunning] = useState(false);
   const [finished, setFinished] = useState(false);
+  const [sessionAwarded, setSessionAwarded] = useState(false);
 
   const totalSeconds = Math.max(1, Math.round(baseMinutes * (1 + extraTime / 100))) * 60;
   const minutes = Math.floor(secondsLeft / 60);
@@ -2052,6 +3365,16 @@ function MockModePanel({ subject }) {
     setSecondsLeft(totalSeconds);
     setRunning(false);
     setFinished(false);
+    setSessionAwarded(false);
+  }
+
+  function startTimer() {
+    setRunning(true);
+    if (!sessionAwarded) {
+      const key = `mock-${subject.id}-${new Date().toISOString().slice(0, 10)}-${baseMinutes}-${extraTime}`;
+      onAwardXP("mock_timer_session", 25, { key, subject: subject.name, board: subject.board });
+      setSessionAwarded(true);
+    }
   }
 
   return (
@@ -2103,7 +3426,7 @@ function MockModePanel({ subject }) {
       </div>
 
       <div className="mt-5 flex flex-wrap gap-3">
-        <button onClick={() => setRunning(true)} className="rounded-2xl bg-cyan-300 px-5 py-3 text-sm font-black text-slate-950 transition-all duration-200 ease-out hover:-translate-y-0.5">
+        <button onClick={startTimer} className="rounded-2xl bg-cyan-300 px-5 py-3 text-sm font-black text-slate-950 transition-all duration-200 ease-out hover:-translate-y-0.5">
           Start
         </button>
         <button onClick={() => setRunning(false)} className="rounded-2xl border border-white/10 bg-white/[0.05] px-5 py-3 text-sm font-black text-white/70 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-white/[0.08]">
@@ -2127,6 +3450,9 @@ function SubjectPagePreview({
   persistedPreview = null,
   onPreviewChange = () => {},
   onSectionChange = () => {},
+  completedPaperIds = [],
+  onCompletedPaperIdsChange = () => {},
+  onAwardXP = () => {},
 }) {
   const [section, setSection] = useState(initialSection);
 
@@ -2215,6 +3541,9 @@ function SubjectPagePreview({
             onRequireLogin={onRequireLogin}
             persistedPreview={persistedPreview}
             onPreviewChange={onPreviewChange}
+            completedPaperIds={completedPaperIds}
+            onCompletedPaperIdsChange={onCompletedPaperIdsChange}
+            onAwardXP={onAwardXP}
             />
         ) : section === "topictests" ? (
         <TopicTestsPanel
@@ -2223,9 +3552,10 @@ function SubjectPagePreview({
             onRequireLogin={onRequireLogin}
             persistedPreview={persistedPreview}
             onPreviewChange={onPreviewChange}
+            onAwardXP={onAwardXP}
             />
         ) : section === "mock" ? (
-          <MockModePanel subject={subject} />
+          <MockModePanel subject={subject} onAwardXP={onAwardXP} />
         ) : section === "ai" ? (
           <AiTutorPanel onUpgrade={onOpenPricing} />
         ) : (
@@ -2287,17 +3617,28 @@ export default function Dashboard({
   );
   const [dashboardProfile, setDashboardProfile] = useState(profile);
   const [loadingSubjects, setLoadingSubjects] = useState(Boolean(user && !profile));
-  const [sidebarOpen, setSidebarOpen] = useState(Boolean(persistedDashboardState.sidebarOpen));
+  const [sidebarPinned, setSidebarPinned] = useState(() => readBooleanStorage("aleveldojo_sidebar_pinned", true));
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeView, setActiveView] = useState(persistedDashboardState.activeView || "dashboard");
   const [activeSubjectId, setActiveSubjectId] = useState(persistedDashboardState.activeSubjectId || null);
   const [subjectSection, setSubjectSection] = useState(persistedDashboardState.subjectSection || "overview");
   const [profileOpen, setProfileOpen] = useState(false);
+  const [allExamsCalendarOpen, setAllExamsCalendarOpen] = useState(false);
   const [openedResource, setOpenedResource] = useState({
     openedPaper: persistedDashboardState.openedPaper || null,
     openedTopicTest: persistedDashboardState.openedTopicTest || null,
   });
+  const [completedPaperIds, setCompletedPaperIds] = useState(() =>
+    readStorage("alevel-dojo-completed-papers", [])
+  );
   const [mistakes, setMistakes] = useState(() => readStorage("alevel-dojo-mistakes", []));
-  const [manualExams, setManualExams] = useState(() => readStorage("alevel-dojo-manual-exams", []));
+  const [calendarEvents, setCalendarEvents] = useState([]);
+  const [xpEvents, setXpEvents] = useState([]);
+  const [xpEventsLoaded, setXpEventsLoaded] = useState(false);
+  const [xpMenuOpen, setXpMenuOpen] = useState(false);
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const xpMenuCloseTimeout = useRef(null);
+  const profileMenuCloseTimeout = useRef(null);
 
   useEffect(() => {
     async function loadDashboardProfile() {
@@ -2348,11 +3689,98 @@ export default function Dashboard({
   }, [mistakes]);
 
   useEffect(() => {
-    writeStorage("alevel-dojo-manual-exams", manualExams);
-  }, [manualExams]);
+    async function loadCompletedPaperIds() {
+      if (!user) return;
 
-  const activeSubjects = subjects.filter((subject) => selectedIds.includes(subject.id));
-  const activeSubject = subjects.find((subject) => subject.id === activeSubjectId) || null;
+      const { data, error } = await supabase
+        .from("completed_papers")
+        .select("paper_id")
+        .eq("user_id", user.id);
+
+      if (error) {
+        console.error(error);
+        return;
+      }
+
+      const ids = data?.map((item) => item.paper_id).filter(Boolean) || [];
+      setCompletedPaperIds(ids);
+      writeStorage("alevel-dojo-completed-papers", ids);
+    }
+
+    loadCompletedPaperIds();
+  }, [user]);
+
+  useEffect(() => {
+    writeStorage("alevel-dojo-completed-papers", completedPaperIds);
+  }, [completedPaperIds]);
+
+  useEffect(() => {
+    writeStorage("aleveldojo_sidebar_pinned", sidebarPinned);
+    if (!sidebarPinned) setSidebarOpen(false);
+  }, [sidebarPinned]);
+
+  useEffect(() => {
+    async function loadCalendarEvents() {
+      if (!user) {
+        setCalendarEvents([]);
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("calendar_events")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("event_date", { ascending: true });
+
+      if (error) {
+        console.error(error);
+        setCalendarEvents([]);
+        return;
+      }
+
+      setCalendarEvents(data || []);
+    }
+
+    loadCalendarEvents();
+  }, [user]);
+
+  useEffect(() => {
+    async function loadXpEvents() {
+      if (!user) {
+        setXpEvents([]);
+        setXpEventsLoaded(true);
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("xp_events")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        console.error(error);
+        setXpEvents([]);
+        setXpEventsLoaded(true);
+        return;
+      }
+
+      setXpEvents(data || []);
+      setXpEventsLoaded(true);
+    }
+
+    setXpEventsLoaded(false);
+    loadXpEvents();
+  }, [user]);
+
+  const subjectsWithProgress = subjects.map((subject) => ({
+    ...subject,
+    progress: getSubjectProgress(subject, completedPaperIds),
+    completedCount: getCompletedCountForSubject(subject, completedPaperIds),
+    totalPapers: getSubjectPapers(subject).length,
+  }));
+  const activeSubjects = subjectsWithProgress.filter((subject) => selectedIds.includes(subject.id));
+  const activeSubject = subjectsWithProgress.find((subject) => subject.id === activeSubjectId) || null;
 
   useEffect(() => {
     if (activeSubjectId && !subjects.some((subject) => subject.id === activeSubjectId)) {
@@ -2367,7 +3795,6 @@ export default function Dashboard({
       activeView,
       activeSubjectId,
       subjectSection,
-      sidebarOpen,
       selectedBoard: activeSubject?.board || null,
       openedPaper: openedResource.openedPaper,
       openedTopicTest: openedResource.openedTopicTest,
@@ -2376,7 +3803,6 @@ export default function Dashboard({
     activeView,
     activeSubjectId,
     subjectSection,
-    sidebarOpen,
     activeSubject?.board,
     openedResource.openedPaper,
     openedResource.openedTopicTest,
@@ -2385,32 +3811,198 @@ export default function Dashboard({
 
   const stats = {
     completedCount:
-      readStorage("alevel-dojo-completed-papers", []).length +
+      completedPaperIds.length +
       readStorage("alevel-dojo-completed-topic-tests", []).length,
+    remainingPapers: Math.max(
+      0,
+      activeSubjects.reduce((total, subject) => total + subject.totalPapers, 0) -
+        activeSubjects.reduce((total, subject) => total + subject.completedCount, 0)
+    ),
     savedCount:
       readStorage("alevel-dojo-favourites", []).length +
       readStorage("alevel-dojo-saved-topic-tests", []).length,
     mistakesOpen: mistakes.filter((mistake) => !mistake.fixed).length,
   };
+  const currentXp = Number(dashboardProfile?.xp || 0);
+  const currentStreak = Number(dashboardProfile?.streak_count || 0);
+  const achievementContext = achievementStats({
+    completedPaperIds,
+    mistakes,
+    calendarEvents,
+    xpEvents,
+    streak: currentStreak,
+  });
+  const achievements = getAchievements(achievementContext, currentXp);
 
-  const todayStart = new Date().setHours(0, 0, 0, 0);
-  const upcomingExams = [
-    ...examDates.filter((exam) =>
-      activeSubjects.some(
-        (subject) => subject.name === exam.subject && subject.board === exam.board
-      )
-    ),
-    ...manualExams.filter((exam) =>
-      activeSubjects.some(
-        (subject) => subject.name === exam.subject && subject.board === exam.board
-      )
-    ),
-  ]
-    .filter((exam) => new Date(`${exam.date}T00:00:00`).getTime() >= todayStart)
-    .sort((a, b) => new Date(a.date) - new Date(b.date));
+  const cambridgeZone = dashboardProfile?.cambridge_zone || dashboardProfile?.exam_zone || "";
+  const hasCambridgeSubjects = activeSubjects.some((subject) => subject.board === "Cambridge");
+  const needsCambridgeZone = hasCambridgeSubjects && !cambridgeZone;
+  const upcomingExams = getUpcomingSelectedExams({
+    officialExams: examDates,
+    manualExams: calendarEvents,
+    selectedSubjects: activeSubjects,
+    cambridgeZone,
+  });
+  const sidebarVisible = sidebarPinned || sidebarOpen;
+  const allCalendarEvents = [
+    ...examDates.map(toOfficialCalendarEvent),
+    ...calendarEvents.map(toUserCalendarEvent),
+  ].sort((a, b) => examStartTime(a) - examStartTime(b));
 
-  function addManualExam(exam) {
-    setManualExams((current) => [exam, ...current]);
+  async function awardXP(action, amount, metadata = {}) {
+    if (!user || !amount) return false;
+    const duplicateKey = metadata.key || metadata.paperId || metadata.id || null;
+    const existing = duplicateKey
+      ? xpEvents.some((event) => event.action === action && event.metadata?.key === duplicateKey)
+      : false;
+    if (existing) return false;
+
+    const { data: latestProfile } = await supabase
+      .from("profiles")
+      .select("xp, streak_count")
+      .eq("id", user.id)
+      .maybeSingle();
+    const latestXp = Number(latestProfile?.xp ?? currentXp);
+    const latestStreak = Number(latestProfile?.streak_count ?? currentStreak);
+    const nextXp = latestXp + amount;
+    const rank = getRankFromXP(nextXp);
+    const eventPayload = {
+      user_id: user.id,
+      action,
+      amount,
+      metadata: { ...metadata, key: duplicateKey },
+    };
+
+    const { data: xpEvent, error: eventError } = await supabase
+      .from("xp_events")
+      .insert(eventPayload)
+      .select()
+      .single();
+
+    if (eventError) {
+      console.error(eventError);
+      return false;
+    }
+
+    const profilePatch = {
+      xp: nextXp,
+      rank_name: rank.name,
+      updated_at: new Date().toISOString(),
+    };
+
+    if (action === "daily_activity") {
+      profilePatch.streak_count = Math.max(1, latestStreak + 1);
+    }
+
+    const { data: updatedProfile, error: profileError } = await supabase
+      .from("profiles")
+      .update(profilePatch)
+      .eq("id", user.id)
+      .select()
+      .single();
+
+    if (profileError) {
+      console.error(profileError);
+      setDashboardProfile((current) => ({ ...(current || {}), ...profilePatch }));
+    } else {
+      setDashboardProfile(updatedProfile);
+    }
+
+    setXpEvents((current) => [xpEvent, ...current]);
+    return true;
+  }
+
+  useEffect(() => {
+    if (!user || !xpEventsLoaded) return;
+    async function awardDailyActivity() {
+      const todayKey = `daily-${new Date().toISOString().slice(0, 10)}`;
+      await awardXP("daily_activity", 10, { key: todayKey });
+      const nextStreak = currentStreak + 1;
+      if (nextStreak >= 3) await awardXP("streak_bonus_3", 30, { key: "streak-3" });
+      if (nextStreak >= 7) await awardXP("streak_bonus_7", 100, { key: "streak-7" });
+    }
+    awardDailyActivity();
+  }, [user, xpEventsLoaded]);
+
+  async function saveCalendarEvent(event) {
+    if (!user) return;
+
+    const payload = {
+      user_id: user.id,
+      title: event.title,
+      event_type: event.event_type,
+      subject: event.subject,
+      board: event.board,
+      paper: event.paper || null,
+      event_date: event.event_date,
+      event_time: event.event_time || null,
+      duration: event.duration || null,
+      notes: event.notes || null,
+      color: event.color || defaultEventColorByType[event.event_type] || "cyan",
+    };
+
+    async function persistEvent(nextPayload) {
+      return event.id
+        ? supabase
+            .from("calendar_events")
+            .update(nextPayload)
+            .eq("id", event.id)
+            .eq("user_id", user.id)
+            .select()
+            .single()
+        : supabase
+            .from("calendar_events")
+            .insert(nextPayload)
+            .select()
+            .single();
+    }
+
+    let { data, error } = await persistEvent(payload);
+
+    if (error && (error.message?.includes("color") || error.details?.includes("color"))) {
+      const { color, ...payloadWithoutColor } = payload;
+      const retry = await persistEvent(payloadWithoutColor);
+      data = retry.data;
+      error = retry.error;
+
+      if (!error) {
+        data = data ? { ...data, color: payload.color } : data;
+        console.warn("Saved calendar event without color because Supabase schema cache did not expose calendar_events.color yet.");
+      }
+    }
+
+    if (error) {
+      console.error(error);
+      alert(error.message);
+      return;
+    }
+
+    setCalendarEvents((current) => {
+      const withoutExisting = current.filter((item) => item.id !== data.id);
+      return [...withoutExisting, data].sort((a, b) => examStartTime(toUserCalendarEvent(a)) - examStartTime(toUserCalendarEvent(b)));
+    });
+
+    if (!event.id) {
+      awardXP("add_calendar_event", 10, { key: `calendar-event-${data.id}`, id: data.id, event_type: data.event_type });
+    }
+  }
+
+  async function deleteCalendarEvent(event) {
+    if (!user || !event?.id) return;
+
+    const { error } = await supabase
+      .from("calendar_events")
+      .delete()
+      .eq("id", event.id)
+      .eq("user_id", user.id);
+
+    if (error) {
+      console.error(error);
+      alert(error.message);
+      return;
+    }
+
+    setCalendarEvents((current) => current.filter((item) => item.id !== event.id));
   }
 
   function handlePreviewChange(resource) {
@@ -2452,6 +4044,14 @@ export default function Dashboard({
     setSelectedIds(draftSelectedIds);
   }
 
+  async function saveDashboardProfile(nextProfile) {
+    await onSaveProfile(nextProfile);
+    setDashboardProfile((current) => ({ ...(current || {}), ...nextProfile }));
+    const ids = profileSubjectsToIds(nextProfile.subjects || nextProfile.selected_subjects || [], subjects);
+    setSelectedIds(ids);
+    setDraftSelectedIds(ids);
+  }
+
   function openSubject(id, section = "overview") {
     setActiveSubjectId(id);
     setSubjectSection(section);
@@ -2471,6 +4071,40 @@ export default function Dashboard({
   async function handleLogout() {
     await supabase.auth.signOut();
     setProfileOpen(false);
+  }
+
+  function openProfileMenu() {
+    if (profileMenuCloseTimeout.current) {
+      window.clearTimeout(profileMenuCloseTimeout.current);
+    }
+    setProfileMenuOpen(true);
+    setXpMenuOpen(false);
+  }
+
+  function closeProfileMenuSoon() {
+    if (profileMenuCloseTimeout.current) {
+      window.clearTimeout(profileMenuCloseTimeout.current);
+    }
+    profileMenuCloseTimeout.current = window.setTimeout(() => {
+      setProfileMenuOpen(false);
+    }, 180);
+  }
+
+  function openXpMenu() {
+    if (xpMenuCloseTimeout.current) {
+      window.clearTimeout(xpMenuCloseTimeout.current);
+    }
+    setXpMenuOpen(true);
+    setProfileMenuOpen(false);
+  }
+
+  function closeXpMenuSoon() {
+    if (xpMenuCloseTimeout.current) {
+      window.clearTimeout(xpMenuCloseTimeout.current);
+    }
+    xpMenuCloseTimeout.current = window.setTimeout(() => {
+      setXpMenuOpen(false);
+    }, 180);
   }
 
   if (loadingSubjects) {
@@ -2494,28 +4128,49 @@ export default function Dashboard({
         open={profileOpen}
         onClose={() => setProfileOpen(false)}
         user={user}
+        profile={dashboardProfile}
         subjects={activeSubjects}
         stats={stats}
         mistakes={mistakes}
+        achievements={achievements}
+        xp={currentXp}
+        streak={currentStreak}
         onLogout={handleLogout}
       />
+      <AllExamsCalendarModal
+        open={allExamsCalendarOpen}
+        onClose={() => setAllExamsCalendarOpen(false)}
+        exams={allCalendarEvents}
+        subjects={activeSubjects}
+        onSaveEvent={saveCalendarEvent}
+        onDeleteEvent={deleteCalendarEvent}
+      />
 
-      <div className="relative z-10 flex min-h-screen">
+      <div className="relative z-10 min-h-screen">
         <DashboardShellSidebar
-          open={sidebarOpen}
-          onOpen={() => setSidebarOpen(true)}
-          onClose={() => setSidebarOpen(false)}
-          onToggleOpen={() => setSidebarOpen((current) => !current)}
+          open={sidebarVisible}
+          pinned={sidebarPinned}
+          onOpen={() => {
+            if (!sidebarPinned) setSidebarOpen(true);
+          }}
+          onClose={() => {
+            if (!sidebarPinned) setSidebarOpen(false);
+          }}
+          onTogglePinned={() => setSidebarPinned((current) => !current)}
           activeView={activeView}
           onSelectView={selectView}
           activeSubjects={activeSubjects}
           onOpenSubject={openSubject}
           onOpenProfile={() => setProfileOpen(true)}
+          onOpenSettings={() => selectView("settings")}
           onOpenPricing={onOpenPricing}
           onGoHome={onGoHome}
+          user={user}
+          profile={dashboardProfile}
+          xp={currentXp}
         />
 
-        <main className="flex-1 px-5 py-6 md:px-8 lg:px-10">
+        <main className={`${sidebarVisible ? "lg:ml-[240px]" : "lg:ml-[64px]"} px-5 py-5 transition-all duration-200 ease-out md:px-8 lg:px-10`}>
           <div className="mb-4 flex items-center justify-between rounded-3xl border border-white/10 bg-white/[0.035] px-4 py-3 lg:hidden">
             <Logo onGoHome={onGoHome} />
             <select
@@ -2534,7 +4189,7 @@ export default function Dashboard({
             </select>
           </div>
 
-          <header className="mb-6 flex flex-wrap items-center justify-between gap-4 rounded-3xl border border-white/10 bg-white/[0.035] px-5 py-4 backdrop-blur-xl">
+          <header className="relative z-[9999] mb-6 flex flex-wrap items-center justify-between gap-4 overflow-visible rounded-3xl border border-white/10 bg-white/[0.035] px-5 py-4 backdrop-blur-xl">
             <div>
               <p className="text-sm text-white/40">Welcome back</p>
               <h1 className="text-2xl font-black tracking-tight text-white">
@@ -2542,19 +4197,66 @@ export default function Dashboard({
               </h1>
             </div>
 
-            <div className="flex flex-wrap items-center gap-3">
-              <button
-                onClick={() => setProfileOpen(true)}
-                className="rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm font-black text-white/70 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-white/[0.07]"
+            <div className="relative z-[9999] flex flex-wrap items-center gap-3 overflow-visible">
+              <div
+                className="relative z-[9999]"
+                onMouseEnter={openXpMenu}
+                onMouseLeave={closeXpMenuSoon}
               >
-                Profile
-              </button>
-              <button
-                onClick={onOpenPricing}
-                className="rounded-2xl bg-gradient-to-r from-rose-400 to-violet-500 px-5 py-3 text-sm font-black text-white shadow-lg shadow-rose-500/15 transition-all duration-200 ease-out hover:-translate-y-0.5"
+                <XPBadge
+                  xp={currentXp}
+                  streak={currentStreak}
+                  open={xpMenuOpen}
+                  onToggle={() => {
+                    setXpMenuOpen((current) => !current);
+                    setProfileMenuOpen(false);
+                  }}
+                />
+              </div>
+              <div
+                className="relative z-[9999]"
+                onMouseEnter={openProfileMenu}
+                onMouseLeave={closeProfileMenuSoon}
               >
-                Upgrade
-              </button>
+                <button
+                  onClick={() => {
+                    setProfileMenuOpen((current) => !current);
+                    setXpMenuOpen(false);
+                  }}
+                  onFocus={openProfileMenu}
+                  className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm font-black text-white/70 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-white/[0.07]"
+                >
+                  <AvatarCircle profile={dashboardProfile} user={user} size="h-7 w-7" />
+                  Profile
+                </button>
+                <ProfileDropdown
+                  open={profileMenuOpen}
+                  user={user}
+                  profile={dashboardProfile}
+                  subjects={activeSubjects}
+                  xp={currentXp}
+                  streak={currentStreak}
+                  achievements={achievements}
+                  onOpenProfile={() => {
+                    setProfileOpen(true);
+                    setProfileMenuOpen(false);
+                  }}
+                  onOpenSettings={() => {
+                    selectView("settings");
+                    setProfileMenuOpen(false);
+                  }}
+                  onOpenPricing={onOpenPricing}
+                  onOpenSaved={() => {
+                    selectView("pastpapers");
+                    setProfileMenuOpen(false);
+                  }}
+                  onOpenSubjects={() => {
+                    setActiveView("dashboard");
+                    setProfileMenuOpen(false);
+                  }}
+                  onLogout={handleLogout}
+                />
+              </div>
             </div>
           </header>
 
@@ -2578,11 +4280,21 @@ export default function Dashboard({
               }
               onPreviewChange={handlePreviewChange}
               onSectionChange={handleSubjectSectionChange}
+              completedPaperIds={completedPaperIds}
+              onCompletedPaperIdsChange={setCompletedPaperIds}
+              onAwardXP={awardXP}
             />
           ) : activeView === "calendar" ? (
-            <ExamCalendarPanel exams={upcomingExams} subjects={activeSubjects} onAddExam={addManualExam} />
+            <ExamCalendarPanel
+              exams={upcomingExams}
+              subjects={activeSubjects}
+              onSaveEvent={saveCalendarEvent}
+              onDeleteEvent={deleteCalendarEvent}
+              needsCambridgeZone={needsCambridgeZone}
+              onOpenAllExams={() => setAllExamsCalendarOpen(true)}
+            />
           ) : activeView === "mistakes" ? (
-            <MistakesTrackerPanel mistakes={mistakes} setMistakes={setMistakes} subjects={activeSubjects} />
+            <MistakesTrackerPanel mistakes={mistakes} setMistakes={setMistakes} subjects={activeSubjects} onAwardXP={awardXP} />
           ) : activeView === "boundaries" ? (
             <GradeBoundariesPanel subjects={activeSubjects} />
           ) : activeView === "ai" ? (
@@ -2590,11 +4302,17 @@ export default function Dashboard({
           ) : activeView === "settings" ? (
             <ProfileSettingsPanel
               profile={dashboardProfile}
+              user={user}
               allSubjectsList={subjects}
               draftSelectedIds={draftSelectedIds}
               onToggleSubject={toggleDraftSubject}
               onSaveSubjects={saveSubjectChoices}
-              onSaveProfile={onSaveProfile}
+              onSaveProfile={saveDashboardProfile}
+              stats={stats}
+              achievements={achievements}
+              xp={currentXp}
+              streak={currentStreak}
+              onOpenPricing={onOpenPricing}
             />
           ) : (
             <DashboardHome
@@ -2604,6 +4322,8 @@ export default function Dashboard({
               upcomingExams={upcomingExams}
               onSelectView={selectView}
               onOpenPricing={onOpenPricing}
+              needsCambridgeZone={needsCambridgeZone}
+              onOpenAllExams={() => setAllExamsCalendarOpen(true)}
             />
           )}
         </main>
@@ -2611,3 +4331,5 @@ export default function Dashboard({
     </div>
   );
 }
+
+

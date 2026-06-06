@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   BookOpen,
   Brain,
@@ -14,6 +14,44 @@ import {
   Zap,
 } from "lucide-react";
 import Watermark from "./Watermark";
+import { examDates } from "./data/examDates";
+
+function examStartDate(exam) {
+  const time = exam.time || "00:00";
+  return new Date(`${exam.date}T${time}:00`);
+}
+
+function findClosestFutureExam(now = new Date()) {
+  return examDates
+    .filter((exam) => exam?.date && examStartDate(exam).getTime() > now.getTime())
+    .sort((a, b) => examStartDate(a).getTime() - examStartDate(b).getTime())[0] || null;
+}
+
+function countdownParts(exam, now = new Date()) {
+  if (!exam) return { days: "00", hours: "00", mins: "00", secs: "00" };
+
+  const diff = Math.max(0, examStartDate(exam).getTime() - now.getTime());
+  const totalSeconds = Math.floor(diff / 1000);
+  const days = Math.floor(totalSeconds / 86400);
+  const hours = Math.floor((totalSeconds % 86400) / 3600);
+  const mins = Math.floor((totalSeconds % 3600) / 60);
+  const secs = totalSeconds % 60;
+
+  return {
+    days: String(days).padStart(2, "0"),
+    hours: String(hours).padStart(2, "0"),
+    mins: String(mins).padStart(2, "0"),
+    secs: String(secs).padStart(2, "0"),
+  };
+}
+
+function formatExamDate(exam) {
+  return examStartDate(exam).toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+}
 function BrowserMockup() {
   return (
     <div className="rounded-[2rem] border-[10px] border-[#030815] bg-white p-5 text-slate-950 shadow-2xl shadow-black/30">
@@ -60,7 +98,27 @@ function HomePageUpgradePreview({
   const [openFaq, setOpenFaq] = useState(0);
   const [authMode, setAuthMode] = useState("signin");
   const [name, setName] = useState("");
+  const [now, setNow] = useState(() => new Date());
   const loggedIn = Boolean(user);
+  const closestExam = useMemo(() => findClosestFutureExam(now), [now]);
+  const countdown = countdownParts(closestExam, now);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setNow(new Date());
+    }, 1000);
+
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+
+    const upcomingCount = examDates.filter(
+      (exam) => exam?.date && examStartDate(exam).getTime() > Date.now()
+    ).length;
+    console.log("[A-Level Dojo] upcoming exams:", upcomingCount);
+  }, []);
 
   function scrollToSection(id) {
     document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -156,8 +214,17 @@ function HomePageUpgradePreview({
 
           <div className="rounded-[2rem] border border-white/10 bg-white/[0.045] p-6 shadow-2xl shadow-black/20 backdrop-blur-xl">
             <div className="mb-5 flex items-center gap-2 text-sm font-black uppercase tracking-[0.22em] text-cyan-200"><CalendarDays size={17} />Closest exam</div>
-            <div className="grid grid-cols-4 gap-3">{[["Days", "05"], ["Hours", "08"], ["Mins", "32"], ["Secs", "47"]].map(([label, value]) => (<div key={label} className="rounded-2xl border border-white/10 bg-slate-950/70 p-4 text-center"><p className="text-3xl font-black text-white">{value}</p><p className="mt-1 text-[10px] font-bold uppercase tracking-[0.2em] text-white/35">{label}</p></div>))}</div>
-            <div className="mt-5 rounded-2xl border border-white/10 bg-slate-950/60 p-4 text-center"><p className="text-sm font-black text-white">Physics • Unit 3 Fields and their consequences</p><p className="mt-1 text-xs text-white/45">OxfordAQA • 1 June 2026</p></div>
+            {closestExam ? (
+              <>
+                <div className="grid grid-cols-4 gap-3">{[["Days", countdown.days], ["Hours", countdown.hours], ["Mins", countdown.mins], ["Secs", countdown.secs]].map(([label, value]) => (<div key={label} className="rounded-2xl border border-white/10 bg-slate-950/70 p-4 text-center"><p className="text-3xl font-black text-white">{value}</p><p className="mt-1 text-[10px] font-bold uppercase tracking-[0.2em] text-white/35">{label}</p></div>))}</div>
+                <div className="mt-5 rounded-2xl border border-white/10 bg-slate-950/60 p-4 text-center"><p className="text-sm font-black text-white">{closestExam.subject} • {closestExam.paper || closestExam.unit || "Exam"}</p><p className="mt-1 text-xs text-white/45">{closestExam.board} • {formatExamDate(closestExam)}</p></div>
+              </>
+            ) : (
+              <div className="rounded-2xl border border-white/10 bg-slate-950/60 p-6 text-center">
+                <p className="text-sm font-black text-white">No upcoming exams added yet</p>
+                <p className="mt-2 text-xs leading-6 text-white/45">Add official timetable HTML files and regenerate the exam calendar data.</p>
+              </div>
+            )}
           </div>
         </section>
 

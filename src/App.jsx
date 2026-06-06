@@ -431,11 +431,36 @@ async function completeOnboarding(profileData) {
     updated_at: new Date().toISOString(),
   };
 
-  const { data, error } = await supabase
+  let { data, error } = await supabase
     .from("profiles")
     .upsert(payload)
     .select()
     .single();
+
+  if (error) {
+    const optionalProfileColumns = ["cambridge_zone", "exam_zone", "school_name", "avatar_url", "preferences", "xp", "streak_count", "rank_name"];
+    const schemaCacheMiss = optionalProfileColumns.some(
+      (column) => error.message?.includes(column) || error.details?.includes(column)
+    );
+    if (schemaCacheMiss) {
+      const retryPayload = { ...payload };
+      optionalProfileColumns.forEach((column) => {
+        delete retryPayload[column];
+      });
+      const retry = await supabase
+        .from("profiles")
+        .upsert(retryPayload)
+        .select()
+        .single();
+
+      data = retry.data;
+      error = retry.error;
+
+      if (!error) {
+        console.warn("Saved profile without cambridge_zone because Supabase schema cache did not expose the column yet.");
+      }
+    }
+  }
 
   if (error) {
     console.error(error);
