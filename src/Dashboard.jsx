@@ -943,12 +943,12 @@ function DashboardShellSidebar({
       </div>
 
       <div className={`scrollbar-hidden min-h-0 flex-1 overflow-y-auto ${open ? "pr-1" : "px-0"}`}>
-        <nav className={open ? "space-y-1.5" : "flex flex-col items-center gap-3"}>
+        <nav className={open ? "space-y-1.5 overflow-visible" : "flex flex-col items-center gap-3"}>
           {nav.map(([Icon, label, id]) => {
             const active = activeView === id;
             const stateClass = active
               ? open
-                ? "bg-cyan-300/10 text-cyan-100 ring-1 ring-cyan-300/25"
+                ? "bg-cyan-300/10 text-cyan-100 ring-1 ring-inset ring-cyan-300/25"
                 : "bg-cyan-400/10 text-cyan-200 shadow-[0_0_18px_rgba(34,211,238,0.15)]"
               : "text-white/55 hover:bg-white/[0.055] hover:text-white";
 
@@ -2308,6 +2308,25 @@ function ProfileModal({ open, onClose, user, profile, subjects, stats, mistakes,
   );
 }
 
+function SettingsToggle({ label, value, onChange }) {
+  return (
+    <label className="flex items-center justify-between gap-4 rounded-2xl border border-white/10 bg-slate-950/45 px-4 py-3 text-sm font-bold text-white/65">
+      {label}
+      <input type="checkbox" checked={value} onChange={(event) => onChange(event.target.checked)} className="h-4 w-4 accent-cyan-300" />
+    </label>
+  );
+}
+
+function SettingsSection({ id, kicker, title, children }) {
+  return (
+    <section id={id} className="scroll-mt-24 rounded-3xl border border-white/10 bg-white/[0.035] p-5 shadow-xl shadow-black/10 backdrop-blur-xl md:p-6">
+      <p className="text-xs font-black uppercase tracking-[0.2em] text-cyan-200/70">{kicker}</p>
+      <h3 className="mt-2 text-xl font-black tracking-tight text-white">{title}</h3>
+      <div className="mt-5">{children}</div>
+    </section>
+  );
+}
+
 function ProfileSettingsPanel({
   profile,
   user,
@@ -2320,8 +2339,49 @@ function ProfileSettingsPanel({
   achievements = [],
   xp = 0,
   streak = 0,
+  xpEvents = [],
   onOpenPricing = () => {},
+  onLogout = () => {},
 }) {
+  const settingsSections = [
+    {
+      group: "Account",
+      items: [
+        { id: "profile-settings", label: "Profile", icon: GraduationCap },
+        { id: "subjects-settings", label: "Subjects", icon: BookOpen },
+        { id: "subject-grades-settings", label: "Subject grades", icon: BarChart3 },
+        { id: "subscription-settings", label: "Subscription", icon: Sparkles },
+        { id: "account-actions-settings", label: "Account actions", icon: LogOut },
+      ],
+    },
+    {
+      group: "Preferences",
+      items: [
+        { id: "appearance-settings", label: "Appearance", icon: Eye },
+        { id: "gamification-settings", label: "Gamification", icon: Trophy },
+        { id: "sound-settings", label: "Sound", icon: Settings2 },
+        { id: "language-settings", label: "Language", icon: BookOpen },
+      ],
+    },
+    {
+      group: "Privacy & Security",
+      items: [
+        { id: "active-logins-settings", label: "Active logins", icon: Lock },
+        { id: "blocked-users-settings", label: "Blocked users", icon: X },
+      ],
+    },
+    {
+      group: "Email Preferences",
+      items: [{ id: "email-preferences-settings", label: "Email preferences", icon: FileText }],
+    },
+    {
+      group: "Progress",
+      items: [
+        { id: "xp-settings", label: "XP", icon: Star },
+        { id: "achievements-settings", label: "Achievements", icon: Trophy },
+      ],
+    },
+  ];
   const preferenceDefaults = {
     theme: "dark",
     show_xp: true,
@@ -2330,6 +2390,15 @@ function ProfileSettingsPanel({
     email_notifications: true,
     product_updates: true,
     marketing_emails: false,
+    showXP: true,
+    showStreaks: true,
+    showAchievements: true,
+    levelUpNotifications: true,
+    soundEffects: false,
+    language: "English",
+    emailProductUpdates: true,
+    emailMarketing: false,
+    emailEssential: true,
     avatarStyle: "initials",
     avatarColor: "violet",
   };
@@ -2337,15 +2406,150 @@ function ProfileSettingsPanel({
     full_name: profile?.full_name || "",
     school_name: profile?.school_name || "",
     year_group: profile?.year_group || "Year 13",
-    target_grade: profile?.target_grade || "A",
-    predicted_grade: profile?.predicted_grade || "",
     cambridge_zone: profile?.cambridge_zone || profile?.exam_zone || "",
+    subject_grades: profile?.subject_grades || {},
     preferences: { ...preferenceDefaults, ...(profile?.preferences || {}) },
   });
+  const [activeSettingsSection, setActiveSettingsSection] = useState("profile-settings");
+  const [saveStatus, setSaveStatus] = useState("saved");
+  const debounceSaveRef = useRef(null);
   const selectedSubjects = allSubjectsList.filter((subject) => draftSelectedIds.includes(subject.id));
   const rank = getRankFromXP(xp);
+  const rankProgress = getNextRankProgress(xp);
+  const joined = user?.created_at
+    ? new Date(user.created_at).toLocaleDateString("en-GB", { month: "long", year: "numeric" })
+    : "Recently";
+  const hasCambridgeSubject = selectedSubjects.some((subject) => subject.board === "Cambridge");
+  const unlockedAchievements = achievements.filter((achievement) => achievement.unlocked);
+  const lockedAchievements = achievements.filter((achievement) => !achievement.unlocked);
+  const xpGraphEvents = xpEvents.slice(0, 7).reverse();
+  const gradeOptions = ["Not set", "A*", "A", "B", "C", "D", "E", "U"];
 
-  async function saveAll() {
+  useEffect(() => {
+    const ids = settingsSections.flatMap((group) => group.items.map((item) => item.id));
+    let frame = null;
+
+    function updateActiveSection() {
+      frame = null;
+      const marker = Math.round(window.innerHeight * 0.28);
+      const sections = ids
+        .map((id) => ({ id, element: document.getElementById(id) }))
+        .filter((item) => item.element)
+        .map((item) => ({ ...item, rect: item.element.getBoundingClientRect() }));
+
+      const current =
+        sections.find((item) => item.rect.top <= marker && item.rect.bottom > marker) ||
+        sections
+          .filter((item) => item.rect.top <= marker)
+          .sort((a, b) => b.rect.top - a.rect.top)[0] ||
+        sections.sort((a, b) => Math.abs(a.rect.top - marker) - Math.abs(b.rect.top - marker))[0];
+
+      if (current?.id) {
+        setActiveSettingsSection((previous) => (previous === current.id ? previous : current.id));
+      }
+    }
+
+    function requestUpdate() {
+      if (frame) return;
+      frame = window.requestAnimationFrame(updateActiveSection);
+    }
+
+    updateActiveSection();
+    window.addEventListener("scroll", requestUpdate, { passive: true });
+    document.addEventListener("scroll", requestUpdate, true);
+    window.addEventListener("resize", requestUpdate);
+
+    return () => {
+      if (frame) window.cancelAnimationFrame(frame);
+      window.removeEventListener("scroll", requestUpdate);
+      document.removeEventListener("scroll", requestUpdate, true);
+      window.removeEventListener("resize", requestUpdate);
+    };
+  }, []);
+
+  async function autoSaveProfile(patch) {
+    const scrollPosition = { x: window.scrollX, y: window.scrollY };
+    setSaveStatus("saving");
+    try {
+      await onSaveProfile({
+        ...profile,
+        ...patch,
+        updated_at: new Date().toISOString(),
+      });
+      setSaveStatus("saved");
+    } catch (error) {
+      console.error(error);
+      setSaveStatus("failed");
+    } finally {
+      window.requestAnimationFrame(() => window.scrollTo(scrollPosition.x, scrollPosition.y));
+    }
+  }
+
+  function debounceProfilePatch(patch) {
+    setSaveStatus("unsaved");
+    if (debounceSaveRef.current) window.clearTimeout(debounceSaveRef.current);
+    debounceSaveRef.current = window.setTimeout(() => {
+      debounceSaveRef.current = null;
+      autoSaveProfile(patch);
+    }, 700);
+  }
+
+  function updateProfileField(key, value, options = {}) {
+    const nextForm = { ...form, [key]: value };
+    setForm(nextForm);
+    const patch = {
+      [key]: value || null,
+    };
+    if (options.debounce) {
+      debounceProfilePatch(patch);
+    } else {
+      autoSaveProfile(patch);
+    }
+  }
+
+  function subjectGradeKey(subject) {
+    return [subject.name || subject.subject, subject.board].filter(Boolean).join("|");
+  }
+
+  function updateSubjectGrade(subject, gradeType, value) {
+    const key = subjectGradeKey(subject);
+    const savedValue = value === "Not set" ? null : value;
+    const nextSubjectGrades = {
+      ...(form.subject_grades || {}),
+      [key]: {
+        ...((form.subject_grades || {})[key] || {}),
+        [gradeType]: savedValue,
+      },
+    };
+
+    setForm((current) => ({ ...current, subject_grades: nextSubjectGrades }));
+    autoSaveProfile({ subject_grades: nextSubjectGrades });
+  }
+
+  async function saveSubjectSelection(ids, cambridgeZone = form.cambridge_zone) {
+    const nextSubjects = allSubjectsList
+      .filter((subject) => ids.includes(subject.id))
+      .map((subject) => ({ board: subject.board, subject: subject.name }));
+    const hasCambridge = nextSubjects.some((subject) => subject.board === "Cambridge");
+    await autoSaveProfile({
+      subjects: nextSubjects,
+      selected_subjects: nextSubjects,
+      cambridge_zone: hasCambridge ? cambridgeZone || null : null,
+      onboarding_completed: true,
+    });
+  }
+
+  function toggleSubjectAutosave(subjectId) {
+    const nextIds = draftSelectedIds.includes(subjectId)
+      ? draftSelectedIds.filter((id) => id !== subjectId)
+      : [...draftSelectedIds, subjectId];
+    onToggleSubject(subjectId);
+    saveSubjectSelection(nextIds);
+  }
+
+  async function saveAll(event) {
+    event?.preventDefault?.();
+    const scrollPosition = { x: window.scrollX, y: window.scrollY };
     const savedSubjects = selectedSubjects
       .map((subject) => ({ board: subject.board, subject: subject.name }));
     const hasCambridgeSubject = savedSubjects.some((subject) => subject.board === "Cambridge");
@@ -2355,22 +2559,41 @@ function ProfileSettingsPanel({
       ...form,
       subjects: savedSubjects,
       selected_subjects: savedSubjects,
-      predicted_grade: form.predicted_grade || null,
       cambridge_zone: hasCambridgeSubject ? form.cambridge_zone || null : null,
       onboarding_completed: true,
     });
     await onSaveSubjects();
+    window.requestAnimationFrame(() => window.scrollTo(scrollPosition.x, scrollPosition.y));
   }
 
-  function updatePreference(key, value) {
-    setForm((current) => ({
-      ...current,
+  async function savePreferences(nextPreferences) {
+    await autoSaveProfile({
       preferences: {
-        ...current.preferences,
-        [key]: value,
+        ...(profile?.preferences || {}),
+        ...nextPreferences,
       },
-    }));
+    });
   }
+
+  function updatePreference(key, value, save = true) {
+    const nextPreferences = {
+      ...form.preferences,
+      [key]: value,
+    };
+    setForm((current) => ({ ...current, preferences: nextPreferences }));
+    if (save) savePreferences(nextPreferences);
+  }
+
+  function scrollToSettingsSection(id) {
+    setActiveSettingsSection(id);
+    document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  useEffect(() => {
+    return () => {
+      if (debounceSaveRef.current) window.clearTimeout(debounceSaveRef.current);
+    };
+  }, []);
 
   const SettingCard = ({ title, children }) => (
     <section className="rounded-3xl border border-white/10 bg-white/[0.035] p-5">
@@ -2379,13 +2602,324 @@ function ProfileSettingsPanel({
     </section>
   );
 
-  const Toggle = ({ label, value, onChange }) => (
-    <label className="flex items-center justify-between gap-4 rounded-2xl border border-white/10 bg-slate-950/45 px-4 py-3 text-sm font-bold text-white/65">
-      {label}
-      <input type="checkbox" checked={value} onChange={(event) => onChange(event.target.checked)} className="h-4 w-4 accent-cyan-300" />
-    </label>
-  );
+  const Toggle = SettingsToggle;
+  const SettingSection = SettingsSection;
   const previewProfile = { ...profile, preferences: form.preferences };
+
+  return (
+    <section className="mx-auto max-w-7xl">
+      <div className="mb-6">
+        <p className="text-xs font-black uppercase tracking-[0.22em] text-cyan-200">Account center</p>
+        <div className="mt-2 flex flex-wrap items-center gap-3">
+          <h2 className="text-3xl font-black text-white">Settings</h2>
+          <span className={`rounded-full border px-3 py-1 text-xs font-black ${
+            saveStatus === "saving"
+              ? "border-violet-300/20 bg-violet-300/10 text-violet-100"
+              : saveStatus === "failed"
+              ? "border-rose-300/25 bg-rose-400/10 text-rose-100"
+              : saveStatus === "unsaved"
+              ? "border-amber-300/25 bg-amber-400/10 text-amber-100"
+              : "border-cyan-300/20 bg-cyan-300/10 text-cyan-100"
+          }`}>
+            {saveStatus === "saving" ? "Saving..." : saveStatus === "failed" ? "Save failed" : saveStatus === "unsaved" ? "Unsaved changes" : "Saved"}
+          </span>
+        </div>
+        <p className="mt-1 max-w-2xl text-sm leading-6 text-white/42">Manage your profile, subjects, plan, preferences, privacy, email, and progress from one scrollable page.</p>
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-[250px_1fr]">
+        <aside className="hidden lg:block">
+          <div className="sticky top-24 rounded-3xl border border-white/10 bg-slate-950/55 p-3 shadow-2xl shadow-black/20 backdrop-blur-xl">
+            {settingsSections.map((group) => (
+              <div key={group.group} className="mb-4 last:mb-0">
+                <p className="mb-2 px-3 text-[10px] font-black uppercase tracking-[0.18em] text-white/30">{group.group}</p>
+                <div className="space-y-1">
+                  {group.items.map((item) => {
+                    const Icon = item.icon;
+                    const active = activeSettingsSection === item.id;
+                    return (
+                      <button
+                        type="button"
+                        key={item.id}
+                        onClick={() => scrollToSettingsSection(item.id)}
+                        className={`flex w-full items-center gap-2 rounded-2xl border px-3 py-2.5 text-left text-xs font-black transition-all duration-200 ease-out hover:-translate-y-0.5 ${
+                          active
+                            ? "border-cyan-300/20 bg-cyan-400/10 text-cyan-200"
+                            : "border-transparent text-white/48 hover:bg-white/[0.045] hover:text-white/75"
+                        }`}
+                      >
+                        <Icon size={15} />
+                        {item.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        </aside>
+
+        <div className="space-y-5">
+          <SettingSection id="profile-settings" kicker="Account" title="Profile">
+            <div className="flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
+              <div className="flex items-center gap-4">
+                <AvatarCircle profile={previewProfile} user={user} size="h-20 w-20" />
+                <div>
+                  <p className="text-xl font-black text-white">{form.full_name || "Name not set"}</p>
+                  <p className="mt-1 text-sm text-white/45">{user?.email}</p>
+                  <p className="mt-1 text-xs text-white/35">Joined {joined}</p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <span className="rounded-full border border-cyan-300/20 bg-cyan-300/10 px-3 py-1 text-xs font-black text-cyan-100">{rank.name}</span>
+                    <span className="rounded-full border border-violet-300/20 bg-violet-300/10 px-3 py-1 text-xs font-black text-violet-100">{xp} XP</span>
+                    <span className="rounded-full border border-rose-300/20 bg-rose-300/10 px-3 py-1 text-xs font-black text-rose-100">{streak} day streak</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="mt-6 grid gap-3 md:grid-cols-2">
+              <input value={form.full_name} onChange={(event) => updateProfileField("full_name", event.target.value, { debounce: true })} placeholder="Name" className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-4 text-white outline-none placeholder:text-white/30 focus:border-cyan-300" />
+              <input value={form.school_name} onChange={(event) => updateProfileField("school_name", event.target.value, { debounce: true })} placeholder="School name" className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-4 text-white outline-none placeholder:text-white/30 focus:border-cyan-300" />
+              <select value={form.year_group} onChange={(event) => updateProfileField("year_group", event.target.value)} className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-4 text-white outline-none focus:border-cyan-300">{["Year 12", "Year 13", "Private candidate", "Other"].map((item) => <option key={item}>{item}</option>)}</select>
+            </div>
+            <div className="mt-6 rounded-2xl border border-white/10 bg-slate-950/45 p-4">
+              <p className="text-sm font-black text-white">Choose avatar</p>
+              <div className="mt-3 grid grid-cols-5 gap-2 sm:grid-cols-10">
+                {avatarStyles.map((option) => {
+                  const Icon = option.icon;
+                  const selected = form.preferences.avatarStyle === option.value;
+                  return (
+                    <button
+                      type="button"
+                      key={option.value}
+                      onClick={() => updatePreference("avatarStyle", option.value)}
+                      className={`flex aspect-square items-center justify-center rounded-2xl border text-sm font-black transition-all duration-200 ease-out hover:-translate-y-0.5 ${
+                        selected ? "border-cyan-300/60 bg-cyan-300/10 text-cyan-100" : "border-white/10 bg-white/[0.035] text-white/55 hover:bg-white/[0.06]"
+                      }`}
+                      title={option.label}
+                    >
+                      {Icon ? <Icon size={19} /> : option.value === "dojo-a" ? "A" : (form.full_name || user?.email || "A").slice(0, 1).toUpperCase()}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="mt-4 text-xs font-black uppercase tracking-[0.18em] text-white/35">Avatar color</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {Object.entries(avatarColors).map(([value, colorClass]) => (
+                  <button
+                    type="button"
+                    key={value}
+                    onClick={() => updatePreference("avatarColor", value)}
+                    className={`h-8 w-8 rounded-full bg-gradient-to-br ${colorClass} transition-all duration-200 ease-out hover:-translate-y-0.5 ${
+                      form.preferences.avatarColor === value ? "ring-2 ring-cyan-300 ring-offset-2 ring-offset-slate-950" : "ring-1 ring-white/10"
+                    }`}
+                    title={value}
+                  />
+                ))}
+              </div>
+            </div>
+          </SettingSection>
+
+          <SettingSection id="subjects-settings" kicker="Account" title="Subjects">
+            <div className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              {selectedSubjects.length === 0 ? (
+                <p className="rounded-2xl border border-white/10 bg-slate-950/45 p-4 text-sm text-white/45">No subjects selected yet.</p>
+              ) : selectedSubjects.map((subject) => (
+                <div key={subject.id} className="rounded-2xl border border-white/10 bg-slate-950/45 p-4">
+                  <p className="font-black text-white">{subject.name}</p>
+                  <p className="mt-1 text-xs font-bold text-cyan-100/65">{subject.board}</p>
+                </div>
+              ))}
+            </div>
+            {hasCambridgeSubject && (
+              <select value={form.cambridge_zone || ""} onChange={(event) => {
+                const zone = event.target.value;
+                setForm((current) => ({ ...current, cambridge_zone: zone }));
+                saveSubjectSelection(draftSelectedIds, zone);
+              }} className="mb-5 w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-4 text-white outline-none focus:border-cyan-300 md:max-w-sm"><option value="">Cambridge exam zone</option>{["Zone 1", "Zone 2", "Zone 3", "Zone 4", "Zone 5", "Zone 6"].map((zone) => <option key={zone}>{zone}</option>)}</select>
+            )}
+            <div className="space-y-5">
+              {subjectGroups.map((group) => (
+                <section key={group.board}>
+                  <h4 className="mb-2 text-sm font-black text-white/75">{group.board}</h4>
+                  <div className="flex flex-wrap gap-2">
+                    {group.subjects.map((subject) => {
+                      const selected = draftSelectedIds.includes(subject.id);
+                      return <button type="button" key={subject.id} onClick={() => toggleSubjectAutosave(subject.id)} className={`rounded-full border px-4 py-2 text-sm font-black transition-all duration-200 ease-out hover:-translate-y-0.5 ${selected ? "border-cyan-300/40 bg-cyan-300/10 text-cyan-100" : "border-white/10 bg-white/[0.035] text-white/55 hover:bg-white/[0.06]"}`}>{subject.name}</button>;
+                    })}
+                  </div>
+                </section>
+              ))}
+            </div>
+          </SettingSection>
+
+          <SettingSection id="subject-grades-settings" kicker="Account" title="Subject grades">
+            <p className="-mt-2 mb-5 text-sm leading-6 text-white/45">
+              Set your current, predicted, and target grades for each subject.
+            </p>
+            {selectedSubjects.length === 0 ? (
+              <div className="rounded-2xl border border-white/10 bg-slate-950/45 p-4">
+                <p className="text-sm font-bold text-white/55">Choose your subjects first to set subject grades.</p>
+                <button
+                  type="button"
+                  onClick={() => scrollToSettingsSection("subjects-settings")}
+                  className="mt-3 rounded-2xl border border-cyan-300/20 bg-cyan-300/10 px-4 py-2 text-sm font-black text-cyan-100 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-cyan-300/15"
+                >
+                  Edit subjects
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {selectedSubjects.map((subject) => {
+                  const key = subjectGradeKey(subject);
+                  const grades = form.subject_grades?.[key] || {};
+                  return (
+                    <div key={subject.id} className="rounded-2xl border border-white/10 bg-slate-950/45 p-4">
+                      <div className="mb-4">
+                        <p className="font-black text-white">{subject.name}</p>
+                        <p className="mt-1 text-xs font-bold text-cyan-100/65">{subject.board}</p>
+                      </div>
+                      <div className="grid gap-3 md:grid-cols-3">
+                        {[
+                          ["current", "Current grade"],
+                          ["predicted", "Predicted grade"],
+                          ["target", "Target grade"],
+                        ].map(([gradeType, label]) => (
+                          <label key={gradeType} className="block">
+                            <span className="text-xs font-black uppercase tracking-[0.14em] text-white/35">{label}</span>
+                            <select
+                              value={grades[gradeType] || "Not set"}
+                              onChange={(event) => updateSubjectGrade(subject, gradeType, event.target.value)}
+                              className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white outline-none focus:border-cyan-300"
+                            >
+                              {gradeOptions.map((grade) => (
+                                <option key={grade}>{grade}</option>
+                              ))}
+                            </select>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </SettingSection>
+
+          <SettingSection id="subscription-settings" kicker="Account" title="Subscription">
+            <div className="grid gap-3 md:grid-cols-3">
+              {["Free", "Dojo Plus", "Dojo Pro"].map((plan, index) => (
+                <div key={plan} className={`rounded-2xl border p-4 ${index === 0 ? "border-cyan-300/20 bg-cyan-300/10" : "border-white/10 bg-slate-950/45"}`}>
+                  <p className="font-black text-white">{index === 0 ? "Current plan: " : ""}{plan}</p>
+                  <p className="mt-2 text-sm leading-6 text-white/45">
+                    {index === 0 ? "Basic dashboard, saved subjects, and progress tracking." : index === 1 ? "Unlimited papers, PDF tools, topic tests, mistakes, calendar, and insights." : "AI tutor, weak-topic recommendations, generators, and advanced analytics."}
+                  </p>
+                </div>
+              ))}
+            </div>
+            <div className="mt-4 rounded-2xl border border-white/10 bg-slate-950/45 p-4">
+              <p className="font-black text-white">Billing</p>
+              <p className="mt-1 text-sm text-white/45">Billing controls will appear here when paid plans launch.</p>
+            </div>
+            <button type="button" onClick={onOpenPricing} className="mt-4 rounded-2xl bg-gradient-to-r from-rose-400 to-violet-500 px-5 py-3 text-sm font-black text-white transition-all duration-200 ease-out hover:-translate-y-0.5">Upgrade</button>
+          </SettingSection>
+
+          <SettingSection id="account-actions-settings" kicker="Account" title="Account actions">
+            <div className="grid gap-3 md:grid-cols-2">
+              <button type="button" onClick={() => scrollToSettingsSection("profile-settings")} className="rounded-2xl border border-cyan-300/20 bg-cyan-300/10 px-4 py-3 text-left font-black text-cyan-100">Reconfigure account</button>
+              <button type="button" onClick={onLogout} className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-left font-black text-white/65">Log out</button>
+              <button type="button" className="rounded-2xl border border-rose-300/20 bg-rose-400/10 px-4 py-3 text-left font-black text-rose-100">Reset progress</button>
+              <button type="button" className="rounded-2xl border border-rose-300/30 bg-rose-500/15 px-4 py-3 text-left font-black text-rose-100">Delete account</button>
+            </div>
+          </SettingSection>
+
+          <SettingSection id="appearance-settings" kicker="Preferences" title="Appearance">
+            <div className="grid gap-3 md:grid-cols-3">
+              {["dark", "light", "system"].map((theme) => (
+                <button type="button" key={theme} onClick={() => updatePreference("theme", theme)} className={`rounded-2xl border p-4 text-left font-black capitalize transition-all duration-200 ease-out hover:-translate-y-0.5 ${form.preferences.theme === theme ? "border-cyan-300/30 bg-cyan-300/10 text-cyan-100" : "border-white/10 bg-slate-950/45 text-white/55"}`}>
+                  {theme}
+                </button>
+              ))}
+            </div>
+          </SettingSection>
+
+          <SettingSection id="gamification-settings" kicker="Preferences" title="Gamification">
+            <div className="grid gap-3 md:grid-cols-2">
+              <Toggle label="Show XP" value={form.preferences.showXP} onChange={(value) => updatePreference("showXP", value)} />
+              <Toggle label="Show streaks" value={form.preferences.showStreaks} onChange={(value) => updatePreference("showStreaks", value)} />
+              <Toggle label="Show achievements" value={form.preferences.showAchievements} onChange={(value) => updatePreference("showAchievements", value)} />
+              <Toggle label="Show level-up notifications" value={form.preferences.levelUpNotifications} onChange={(value) => updatePreference("levelUpNotifications", value)} />
+            </div>
+          </SettingSection>
+
+          <SettingSection id="sound-settings" kicker="Preferences" title="Sound">
+            <Toggle label="Enable sound effects" value={form.preferences.soundEffects} onChange={(value) => updatePreference("soundEffects", value)} />
+          </SettingSection>
+
+          <SettingSection id="language-settings" kicker="Preferences" title="Language">
+            <select value={form.preferences.language} onChange={(event) => updatePreference("language", event.target.value)} className="w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-4 text-white outline-none focus:border-cyan-300 md:max-w-sm">
+              {["English", "Arabic", "French", "Spanish"].map((language) => <option key={language}>{language}</option>)}
+            </select>
+          </SettingSection>
+
+          <SettingSection id="active-logins-settings" kicker="Privacy & Security" title="Active logins">
+            <div className="rounded-2xl border border-white/10 bg-slate-950/45 p-4 text-sm text-white/45">No active sessions found</div>
+            <button type="button" className="mt-3 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-black text-white/65">Sign out of all devices</button>
+          </SettingSection>
+
+          <SettingSection id="blocked-users-settings" kicker="Privacy & Security" title="Blocked users">
+            <div className="rounded-2xl border border-white/10 bg-slate-950/45 p-4 text-sm text-white/45">You haven't blocked anyone yet</div>
+          </SettingSection>
+
+          <SettingSection id="email-preferences-settings" kicker="Email Preferences" title="Email preferences">
+            <div className="grid gap-3 md:grid-cols-2">
+              <Toggle label="Product updates" value={form.preferences.emailProductUpdates} onChange={(value) => updatePreference("emailProductUpdates", value)} />
+              <Toggle label="Marketing & promotions" value={form.preferences.emailMarketing} onChange={(value) => updatePreference("emailMarketing", value)} />
+              <Toggle label="Essential emails" value={form.preferences.emailEssential} onChange={(value) => updatePreference("emailEssential", value)} />
+            </div>
+          </SettingSection>
+
+          <SettingSection id="xp-settings" kicker="Progress" title="XP">
+            <div className="grid gap-3 md:grid-cols-4">
+              <MetricCard label="Current XP" value={xp} detail="Total earned" />
+              <MetricCard label="Current rank" value={rankProgress.currentRank.name} detail="Your level" accent="text-violet-200" />
+              <MetricCard label="Next rank" value={rankProgress.nextRank?.name || "Max rank"} detail={`${rankProgress.needed} XP needed`} accent="text-rose-200" />
+              <MetricCard label="Streak" value={`${streak} days`} detail="Current streak" accent="text-emerald-200" />
+            </div>
+            <div className="mt-4 h-2 rounded-full bg-white/10">
+              <div className="h-2 rounded-full bg-gradient-to-r from-cyan-300 via-violet-300 to-rose-300" style={{ width: `${rankProgress.percent}%` }} />
+            </div>
+            <div className="mt-4 rounded-2xl border border-white/10 bg-slate-950/45 p-4">
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-white/35">Recent XP</p>
+              {xpGraphEvents.length === 0 ? (
+                <p className="mt-3 text-sm text-white/42">No XP activity yet.</p>
+              ) : (
+                <div className="mt-3 flex h-24 items-end gap-2">
+                  {xpGraphEvents.map((event, index) => (
+                    <span key={event.id || index} className="flex-1 rounded-t-lg bg-gradient-to-t from-violet-400/35 to-cyan-300/70" style={{ height: `${Math.max(16, Math.min(96, Number(event.amount || 0) * 1.8))}%` }} title={`${event.action}: ${event.amount} XP`} />
+                  ))}
+                </div>
+              )}
+            </div>
+          </SettingSection>
+
+          <SettingSection id="achievements-settings" kicker="Progress" title="Achievements">
+            <p className="mb-4 text-sm font-bold text-white/45">{unlockedAchievements.length}/{achievements.length} unlocked</p>
+            <div className="grid gap-2 md:grid-cols-2">
+              {[...unlockedAchievements, ...lockedAchievements].map((achievement) => (
+                <div key={achievement.id} className={`rounded-2xl border p-3 text-sm font-bold ${achievement.unlocked ? "border-cyan-300/25 bg-cyan-300/10 text-cyan-100" : "border-white/10 bg-white/[0.035] text-white/40"}`}>
+                  <div className="flex items-center justify-between gap-3">
+                    <span>{achievement.label}</span>
+                    <span className="text-xs">{achievement.unlocked ? "Unlocked" : "Locked"}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </SettingSection>
+        </div>
+      </div>
+
+    </section>
+  );
 
   return (
     <section className="space-y-5">
@@ -2408,8 +2942,6 @@ function ProfileSettingsPanel({
             <input value={form.full_name} onChange={(event) => setForm({ ...form, full_name: event.target.value })} placeholder="Name" className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-4 text-white outline-none placeholder:text-white/30 focus:border-cyan-300" />
             <input value={form.school_name} onChange={(event) => setForm({ ...form, school_name: event.target.value })} placeholder="School name" className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-4 text-white outline-none placeholder:text-white/30 focus:border-cyan-300" />
             <select value={form.year_group} onChange={(event) => setForm({ ...form, year_group: event.target.value })} className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-4 text-white outline-none focus:border-cyan-300">{["Year 12", "Year 13", "Private candidate", "Other"].map((item) => <option key={item}>{item}</option>)}</select>
-            <select value={form.target_grade} onChange={(event) => setForm({ ...form, target_grade: event.target.value })} className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-4 text-white outline-none focus:border-cyan-300">{["E", "D", "C", "B", "A", "A*"].map((item) => <option key={item}>{item}</option>)}</select>
-            <select value={form.predicted_grade || ""} onChange={(event) => setForm({ ...form, predicted_grade: event.target.value })} className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-4 text-white outline-none focus:border-cyan-300"><option value="">Predicted grade optional</option>{["E", "D", "C", "B", "A", "A*"].map((item) => <option key={item}>{item}</option>)}</select>
             <select value={form.cambridge_zone || ""} onChange={(event) => setForm({ ...form, cambridge_zone: event.target.value })} className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-4 text-white outline-none focus:border-cyan-300"><option value="">Cambridge exam zone</option>{["Zone 1", "Zone 2", "Zone 3", "Zone 4", "Zone 5", "Zone 6"].map((zone) => <option key={zone}>{zone}</option>)}</select>
           </div>
           <div className="mt-5 rounded-2xl border border-white/10 bg-slate-950/45 p-4">
@@ -2509,12 +3041,6 @@ function ProfileSettingsPanel({
         </SettingCard>
       </div>
 
-      <button
-        onClick={saveAll}
-        className="mt-8 rounded-2xl bg-gradient-to-r from-rose-400 to-violet-500 px-6 py-3 text-sm font-black text-white"
-      >
-        Save settings
-      </button>
     </section>
   );
 }
@@ -4312,7 +4838,9 @@ export default function Dashboard({
               achievements={achievements}
               xp={currentXp}
               streak={currentStreak}
+              xpEvents={xpEvents}
               onOpenPricing={onOpenPricing}
+              onLogout={handleLogout}
             />
           ) : (
             <DashboardHome
