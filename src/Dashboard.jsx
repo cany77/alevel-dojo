@@ -383,6 +383,22 @@ function getPaperInsert(paper, subject = null, board = null) {
   return null;
 }
 
+function sessionRank(session = "") {
+  const normalized = String(session).toLowerCase();
+  if (normalized.includes("nov") || normalized.includes("oct")) return 3;
+  if (normalized.includes("jun") || normalized.includes("may")) return 2;
+  if (normalized.includes("jan")) return 1;
+  return 0;
+}
+
+function sortPapersNewestFirst(papersList = []) {
+  return [...papersList].sort((a, b) => {
+    const yearDiff = Number(b.year || 0) - Number(a.year || 0);
+    if (yearDiff !== 0) return yearDiff;
+    return sessionRank(b.session) - sessionRank(a.session);
+  });
+}
+
 function readStorage(key, fallback) {
   try {
     const saved = window.localStorage.getItem(key);
@@ -494,8 +510,9 @@ function unitSortValue(unit = "") {
     label.startsWith("unit") ? 1 :
     label.startsWith("paper") ? 2 :
     label.startsWith("pure") ? 3 :
-    label.startsWith("statistics") ? 4 :
-    label.startsWith("mechanics") ? 5 :
+    label.startsWith("further pure") ? 4 :
+    label.startsWith("statistics") ? 5 :
+    label.startsWith("mechanics") ? 6 :
     9;
 
   return prefix * 100 + number;
@@ -3187,6 +3204,430 @@ function ProfileSettingsPanel({
     </section>
   );
 }
+
+function PastPapersLandingPage({
+  subjects = [],
+  user = null,
+  completedPaperIds = [],
+  onOpenSubject = () => {},
+  onOpenPaperEdit = () => {},
+}) {
+  const [search, setSearch] = useState("");
+  const [subjectFilter, setSubjectFilter] = useState("All selected subjects");
+  const [boardFilter, setBoardFilter] = useState("All boards");
+  const [yearFilter, setYearFilter] = useState("All years");
+  const [markedFilter, setMarkedFilter] = useState("All");
+  const [savedPaperIds] = useState(() => readStorage("alevel-dojo-favourites", []));
+  const [annotatedPaperIds, setAnnotatedPaperIds] = useState([]);
+
+  const subjectPaperGroups = useMemo(
+    () =>
+      subjects.map((subject) => {
+        const subjectPapers = sortPapersNewestFirst(getSubjectPapers(subject));
+        return {
+          subject,
+          papers: subjectPapers,
+          latestPaper: subjectPapers[0] || null,
+        };
+      }),
+    [subjects]
+  );
+
+  const allSubjectPapers = useMemo(
+    () =>
+      subjectPaperGroups.flatMap(({ subject, papers: subjectPapers }) =>
+        subjectPapers.map((paper) => ({ ...paper, subjectEntry: subject }))
+      ),
+    [subjectPaperGroups]
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadAnnotationStatus() {
+      if (!user?.id || allSubjectPapers.length === 0) {
+        setAnnotatedPaperIds([]);
+        return;
+      }
+
+      const ids = allSubjectPapers.map((paper) => paperId(paper));
+      const { data, error } = await supabase
+        .from("pdf_annotations")
+        .select("paper_id, annotations")
+        .eq("user_id", user.id)
+        .eq("pdf_type", "question")
+        .in("paper_id", ids);
+
+      if (cancelled) return;
+
+      if (error) {
+        setAnnotatedPaperIds([]);
+        return;
+      }
+
+      setAnnotatedPaperIds(
+        (data || [])
+          .filter((row) => {
+            if (!row.annotations?.pages) return false;
+            return Object.values(row.annotations.pages).some(
+              (items) => Array.isArray(items) && items.length > 0
+            );
+          })
+          .map((row) => row.paper_id)
+      );
+    }
+
+    loadAnnotationStatus();
+
+    function handleAnnotationSaved(event) {
+      const { paperId: changedPaperId, pdfType, hasAnnotations } = event.detail || {};
+      if (pdfType !== "question") return;
+
+      setAnnotatedPaperIds((current) => {
+        if (hasAnnotations) {
+          return current.includes(changedPaperId) ? current : [...current, changedPaperId];
+        }
+
+        return current.filter((item) => item !== changedPaperId);
+      });
+    }
+
+    function handleAnnotationReset(event) {
+      const { paperId: changedPaperId, pdfType } = event.detail || {};
+      if (pdfType !== "question") return;
+      setAnnotatedPaperIds((current) => current.filter((item) => item !== changedPaperId));
+    }
+
+    window.addEventListener("alevel-dojo:pdf-annotations-saved", handleAnnotationSaved);
+    window.addEventListener("alevel-dojo:pdf-annotations-reset", handleAnnotationReset);
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener("alevel-dojo:pdf-annotations-saved", handleAnnotationSaved);
+      window.removeEventListener("alevel-dojo:pdf-annotations-reset", handleAnnotationReset);
+    };
+  }, [allSubjectPapers, user?.id]);
+
+  const availableBoards = ["All boards", ...unique(subjects.map((subject) => subject.board))];
+  const availableYears = [
+    "All years",
+    ...sortYearsDescending(unique(allSubjectPapers.map((paper) => paper.year))),
+  ];
+
+  const filteredSubjects = subjectPaperGroups.filter(({ subject, papers: subjectPapers }) => {
+    const text = `${subject.name} ${subject.board} ${subjectPapers
+      .map((paper) => `${paper.unit || ""} ${paper.session || ""} ${paper.year || ""}`)
+      .join(" ")}`.toLowerCase();
+
+    return (
+      text.includes(search.toLowerCase()) &&
+      (subjectFilter === "All selected subjects" || subject.id === subjectFilter) &&
+      (boardFilter === "All boards" || subject.board === boardFilter)
+    );
+  });
+
+  function unitLabel(paper) {
+    return paper.unit || paper.topic || "Other papers";
+  }
+
+  function carouselId(subjectId, unit) {
+    return `past-paper-carousel-${subjectId}-${String(unit)
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")}`;
+  }
+
+  function scrollUnitCarousel(id, direction) {
+    const carousel = document.getElementById(id);
+    if (!carousel) return;
+    carousel.scrollBy({
+      left: direction * Math.min(carousel.clientWidth * 0.85, 620),
+      behavior: "smooth",
+    });
+  }
+
+  const subjectSections = filteredSubjects.map(({ subject, papers: subjectPapers }) => {
+    const filteredPapers = sortPapersNewestFirst(subjectPapers).filter((paper) => {
+      const id = paperId(paper);
+      const text = `${paperLabel(paper)} ${paper.subject} ${paper.board} ${paper.unit || ""} ${
+        paper.session || ""
+      } ${paper.year || ""}`.toLowerCase();
+      const isMarked = annotatedPaperIds.includes(id);
+
+      return (
+        text.includes(search.toLowerCase()) &&
+        (yearFilter === "All years" || paper.year === yearFilter) &&
+        (markedFilter === "All" ||
+          (markedFilter === "Marked" && isMarked) ||
+          (markedFilter === "Unmarked" && !isMarked))
+      );
+    });
+
+    const grouped = sortUnits(unique(filteredPapers.map(unitLabel))).map((unit) => ({
+      unit,
+      papers: filteredPapers.filter((paper) => unitLabel(paper) === unit).slice(0, 12),
+      total: filteredPapers.filter((paper) => unitLabel(paper) === unit).length,
+    }));
+
+    return {
+      subject,
+      groups: grouped.filter((group) => group.papers.length > 0),
+      totalMatchingPapers: filteredPapers.length,
+    };
+  });
+
+  return (
+    <section className="space-y-6">
+      <div className="rounded-3xl border border-white/10 bg-slate-950/55 p-5 shadow-2xl shadow-black/20">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.24em] text-cyan-200/80">
+              A-Level Dojo Library
+            </p>
+            <h1 className="mt-2 text-3xl font-black text-white">Past Papers</h1>
+            <p className="mt-2 text-sm text-white/52">
+              Choose a subject and start from the latest papers.
+            </p>
+          </div>
+
+          <div className="relative w-full max-w-xl">
+            <Search className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-white/35" size={18} />
+            <input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search subjects, papers, units..."
+              className="w-full rounded-2xl border border-white/10 bg-white/[0.045] py-3 pl-11 pr-4 text-sm font-bold text-white outline-none placeholder:text-white/35 focus:border-cyan-300/60"
+            />
+          </div>
+        </div>
+
+        <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <select
+            value={subjectFilter}
+            onChange={(event) => setSubjectFilter(event.target.value)}
+            className="rounded-xl border border-white/10 bg-slate-950 px-3 py-3 text-sm text-white outline-none focus:border-cyan-300"
+          >
+            <option>All selected subjects</option>
+            {subjects.map((subject) => (
+              <option key={subject.id} value={subject.id}>
+                {subject.name}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={boardFilter}
+            onChange={(event) => setBoardFilter(event.target.value)}
+            className="rounded-xl border border-white/10 bg-slate-950 px-3 py-3 text-sm text-white outline-none focus:border-cyan-300"
+          >
+            {availableBoards.map((board) => (
+              <option key={board}>{board}</option>
+            ))}
+          </select>
+
+          <select
+            value={yearFilter}
+            onChange={(event) => setYearFilter(event.target.value)}
+            className="rounded-xl border border-white/10 bg-slate-950 px-3 py-3 text-sm text-white outline-none focus:border-cyan-300"
+          >
+            {availableYears.map((year) => (
+              <option key={year}>{year}</option>
+            ))}
+          </select>
+
+          <select
+            value={markedFilter}
+            onChange={(event) => setMarkedFilter(event.target.value)}
+            className="rounded-xl border border-white/10 bg-slate-950 px-3 py-3 text-sm text-white outline-none focus:border-cyan-300"
+          >
+            <option>All</option>
+            <option>Marked</option>
+            <option>Unmarked</option>
+          </select>
+        </div>
+      </div>
+
+      <section className="space-y-4">
+        {subjects.length === 0 ? (
+          <div className="rounded-3xl border border-white/10 bg-white/[0.035] p-6 text-white/48">
+            No subjects selected yet. Go to settings to add subjects.
+          </div>
+        ) : subjectSections.length === 0 ? (
+          <div className="rounded-3xl border border-white/10 bg-white/[0.035] p-6 text-white/48">
+            No papers found for your selected subjects yet.
+          </div>
+        ) : (
+          subjectSections.map(({ subject, groups, totalMatchingPapers }) => {
+            const visual = subjectVisuals[normalizeSubjectName(subject.name)] || defaultSubjectVisual;
+            const Icon = visual.icon || BookOpen;
+
+            return (
+              <article
+                key={subject.id}
+                className="rounded-3xl border border-white/10 bg-white/[0.035] p-4 shadow-xl shadow-black/15"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-4">
+                  <div className="flex items-center gap-3">
+                    <div className={`hidden rounded-2xl border p-2.5 sm:inline-flex ${visual.soft}`}>
+                      <Icon size={18} />
+                    </div>
+                    <div>
+                      <h2 className="text-xl font-black text-white">{subject.name}</h2>
+                      <p className="mt-0.5 text-sm text-white/42">
+                        {subject.board} · {totalMatchingPapers} matching paper{totalMatchingPapers === 1 ? "" : "s"}
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => onOpenSubject(subject.id, "pastpapers")}
+                    className="rounded-xl border border-cyan-300/25 bg-cyan-300/10 px-4 py-2 text-sm font-black text-cyan-100 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-cyan-300/15"
+                  >
+                    Go to subject
+                  </button>
+                </div>
+
+                {groups.length === 0 ? (
+                  <div className="py-5 text-sm text-white/45">No papers available yet.</div>
+                ) : (
+                  <div className="divide-y divide-white/10">
+                    {groups.map((group) => {
+                      const carouselKey = carouselId(subject.id, group.unit);
+
+                      return (
+                      <div key={group.unit} className="py-4">
+                        <div className="mb-2 flex items-center justify-between gap-3">
+                          <h3 className="text-sm font-black uppercase tracking-[0.16em] text-white/58">
+                            {group.unit}
+                          </h3>
+                          <div className="flex items-center gap-2">
+                            {group.total > group.papers.length && (
+                              <button
+                                type="button"
+                                onClick={() => onOpenSubject(subject.id, "pastpapers")}
+                                className="text-xs font-black text-cyan-200 hover:text-cyan-100"
+                              >
+                                View all
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => scrollUnitCarousel(carouselKey, -1)}
+                              aria-label={`Scroll ${group.unit} papers left`}
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/[0.045] text-white/55 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:border-cyan-300/25 hover:bg-cyan-300/10 hover:text-cyan-100"
+                            >
+                              <ArrowLeft size={14} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => scrollUnitCarousel(carouselKey, 1)}
+                              aria-label={`Scroll ${group.unit} papers right`}
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/[0.045] text-white/55 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:border-cyan-300/25 hover:bg-cyan-300/10 hover:text-cyan-100"
+                            >
+                              <ChevronRight size={15} />
+                            </button>
+                          </div>
+                        </div>
+
+                        <div
+                          id={carouselKey}
+                          className="scrollbar-hidden flex snap-x snap-mandatory gap-4 overflow-x-auto scroll-smooth pb-2 pr-2"
+                        >
+                          {group.papers.map((paper) => {
+                            const id = paperId(paper);
+                            const isCompleted = completedPaperIds.includes(id);
+                            const isSaved = savedPaperIds.includes(id);
+                            const isAnnotated = annotatedPaperIds.includes(id);
+                            const paperInsert = getPaperInsert(paper, subject);
+
+                            return (
+                              <article
+                                key={id}
+                                role="button"
+                                tabIndex={0}
+                                onClick={() => onOpenSubject(subject.id, "pastpapers")}
+                                onKeyDown={(event) => {
+                                  if (event.key === "Enter" || event.key === " ") {
+                                    event.preventDefault();
+                                    onOpenSubject(subject.id, "pastpapers");
+                                  }
+                                }}
+                                className="relative flex min-h-[190px] w-[230px] shrink-0 snap-start flex-col justify-between overflow-hidden rounded-2xl border border-white/10 bg-slate-950/40 p-4 text-left transition-all duration-200 ease-out hover:-translate-y-0.5 hover:border-cyan-300/25 hover:bg-white/[0.055] hover:shadow-[0_0_24px_rgba(34,211,238,0.08)]"
+                              >
+                                <FileText
+                                  className="pointer-events-none absolute -right-2 top-3 text-cyan-200/[0.07]"
+                                  size={76}
+                                />
+                                <div className="relative z-10">
+                                  <div className="mb-3 inline-flex rounded-2xl border border-cyan-300/15 bg-cyan-300/10 p-3 text-cyan-100">
+                                    <FileText size={25} />
+                                  </div>
+                                  <p className="line-clamp-2 text-sm font-black text-white">
+                                    {paper.unit || group.unit}
+                                  </p>
+                                  <p className="hidden">
+                                    {paper.session || "Session"} {paper.year || ""} · {paper.unit || group.unit}
+                                  </p>
+                                  <p className="mt-1 text-xs font-bold text-white/48">
+                                    {paper.session || "Session"} {paper.year || ""}
+                                  </p>
+                                  <p className="mt-0.5 truncate text-xs text-white/32">
+                                    {paper.qualification || "Question paper"}
+                                  </p>
+                                </div>
+
+                                <div className="relative z-10 mt-3 flex flex-wrap gap-1.5">
+                                  {paperInsert && (
+                                    <span className="rounded-full border border-violet-300/20 bg-violet-300/10 px-2 py-1 text-[9px] font-black uppercase tracking-[0.1em] text-violet-100">
+                                      {paperInsert.label}
+                                    </span>
+                                  )}
+                                  {isAnnotated && (
+                                    <span className="rounded-full border border-cyan-300/20 bg-cyan-300/10 px-2 py-1 text-[9px] font-black uppercase tracking-[0.1em] text-cyan-100">
+                                      Marked
+                                    </span>
+                                  )}
+                                  {isCompleted && (
+                                    <span className="rounded-full border border-emerald-300/20 bg-emerald-300/10 px-2 py-1 text-[9px] font-black uppercase tracking-[0.1em] text-emerald-100">
+                                      Completed
+                                    </span>
+                                  )}
+                                  {isSaved && (
+                                    <span className="rounded-full border border-amber-300/20 bg-amber-300/10 px-2 py-1 text-[9px] font-black uppercase tracking-[0.1em] text-amber-100">
+                                      Saved
+                                    </span>
+                                  )}
+
+                                  <button
+                                    type="button"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      onOpenPaperEdit(subject.id, paper);
+                                    }}
+                                    className={`mt-2 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r ${visual.accent} px-3 py-2 text-xs font-black text-white shadow-lg ${visual.glow} transition-all duration-200 ease-out hover:-translate-y-0.5 hover:brightness-110`}
+                                  >
+                                    <Edit3 size={14} />
+                                    PDF Edit
+                                  </button>
+                                </div>
+                              </article>
+                            );
+                          })}
+                        </div>
+                      </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </article>
+            );
+          })
+        )}
+      </section>
+    </section>
+  );
+}
+
 function PastPapersPanel({
   subject,
   user,
@@ -4913,12 +5354,29 @@ export default function Dashboard({
     setActiveView(section === "topictests" ? "topictests" : section === "pastpapers" ? "pastpapers" : "subject");
   }
 
+  function openPaperFromLanding(subjectId, paper) {
+    if (!subjectId || !paper) return;
+    setActiveSubjectId(subjectId);
+    setSubjectSection("pastpapers");
+    setActiveView("pastpapers");
+    setOpenedResource({
+      openedPaper: {
+        type: "pastPaper",
+        paperId: paperId(paper),
+        mode: "edit",
+        showMarkScheme: false,
+        showInsert: false,
+      },
+      openedTopicTest: null,
+    });
+  }
+
   function selectView(view) {
     setActiveSubjectId(null);
     setActiveView(view);
     setOpenedResource({ openedPaper: null, openedTopicTest: null });
 
-    if ((view === "pastpapers" || view === "topictests") && activeSubjects[0]) {
+    if (view === "topictests" && activeSubjects[0]) {
       openSubject(activeSubjects[0].id, view);
     }
   }
@@ -5288,6 +5746,14 @@ export default function Dashboard({
               onDeleteEvent={deleteCalendarEvent}
               needsCambridgeZone={needsCambridgeZone}
               onOpenAllExams={() => setAllExamsCalendarOpen(true)}
+            />
+          ) : activeView === "pastpapers" ? (
+            <PastPapersLandingPage
+              subjects={activeSubjects}
+              user={user}
+              completedPaperIds={completedPaperIds}
+              onOpenSubject={openSubject}
+              onOpenPaperEdit={openPaperFromLanding}
             />
           ) : activeView === "mistakes" ? (
             <MistakesTrackerPanel mistakes={mistakes} setMistakes={setMistakes} subjects={activeSubjects} onAwardXP={awardXP} />
