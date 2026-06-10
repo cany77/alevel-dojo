@@ -5,7 +5,13 @@ import PdfEditorLayer from "./PdfEditorLayer";
 import "@react-pdf-viewer/core/lib/styles/index.css";
 import "@react-pdf-viewer/default-layout/lib/styles/index.css";
 
-export default function PdfViewer({ fileUrl, editable = false }) {
+export default function PdfViewer({
+  fileUrl,
+  editable = false,
+  user = null,
+  paperId = "",
+  pdfType = "question",
+}) {
   const defaultLayoutPluginInstance = defaultLayoutPlugin();
 
   return (
@@ -14,7 +20,14 @@ export default function PdfViewer({ fileUrl, editable = false }) {
         <Viewer fileUrl={fileUrl} plugins={[defaultLayoutPluginInstance]} />
       </Worker>
 
-      {editable && <PdfEditorLayer storageKey={fileUrl} />}
+      {editable && (
+        <PdfEditorLayer
+          storageKey={fileUrl}
+          user={user}
+          paperId={paperId}
+          pdfType={pdfType}
+        />
+      )}
     </div>
   );
 }

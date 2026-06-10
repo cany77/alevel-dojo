@@ -7,11 +7,11 @@ import usePersistentState from "./usePersistentState";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   BarChart3,
+  Bell,
   BookOpen,
   Brain,
   CalendarDays,
   Check,
-  ChevronLeft,
   ChevronRight,
   FileText,
   GraduationCap,
@@ -21,7 +21,7 @@ import {
   LineChart as LineChartIcon,
   Lock,
   LogOut,
-  Menu,
+  PanelLeft,
   RotateCcw,
   Plus,
   Save,
@@ -318,6 +318,71 @@ function paperLabel(paper) {
     paper.session || ""
   } ${paper.year || ""} • ${paper.unit || ""}`;
 }
+function getPaperInsert(paper, subject = null, board = null) {
+  const subjectName = String(
+    paper?.subject || subject?.name || subject || ""
+  ).toLowerCase();
+  const boardName = String(paper?.board || subject?.board || board || "").toLowerCase();
+  const paperText = [
+    paper?.unit,
+    paper?.variant,
+    paper?.qualification,
+    paper?.topic,
+    paper?.session,
+    paper?.year,
+    paper?.questionPaper,
+    paper?.pdf,
+    paper ? paperLabel(paper) : "",
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  if (subjectName.includes("physics")) {
+    return {
+      label: "Formula book",
+      url: "/inserts/physics-formula-book.pdf",
+    };
+  }
+
+  if (subjectName.includes("chemistry")) {
+    return {
+      label: "Formula book",
+      url: "/inserts/chemistry-formula-book.pdf",
+    };
+  }
+
+  if (
+    subjectName.includes("mathematics") ||
+    subjectName.includes("further mathematics") ||
+    subjectName.includes("statistics") ||
+    subjectName.includes("mechanics")
+  ) {
+    return {
+      label: "Formula book",
+      url: "/inserts/math-formula-book.pdf",
+    };
+  }
+
+  const isComputerScience = subjectName.includes("computer science");
+  const isCambridge = boardName.includes("cambridge");
+  const isPaper2 =
+    /\bpaper\s*2\b/.test(paperText) ||
+    /\bp2\b/.test(paperText) ||
+    /9618\s*\/\s*2\b/.test(paperText) ||
+    /9618\s*\/\s*2[123]\b/.test(paperText) ||
+    /9618[-_/ ]?2[123]\b/.test(paperText);
+
+  if (isComputerScience && isCambridge && isPaper2) {
+    return {
+      label: "Insert",
+      url: "/inserts/cs-paper-2-insert.pdf",
+    };
+  }
+
+  return null;
+}
+
 function readStorage(key, fallback) {
   try {
     const saved = window.localStorage.getItem(key);
@@ -348,6 +413,22 @@ function unique(values) {
 
 function getRankFromXP(xp = 0) {
   return rankThresholds.reduce((current, rank) => (xp >= rank.xp ? rank : current), rankThresholds[0]);
+}
+
+function getDashboardGreeting(name = "") {
+  const hour = new Date().getHours();
+  const cleanName = String(name || "").trim();
+  const firstName = cleanName.split(/\s+/)[0] || "Student";
+  const greeting =
+    hour >= 5 && hour < 12
+      ? "Good morning"
+      : hour >= 12 && hour < 17
+      ? "Good afternoon"
+      : hour >= 17 && hour < 21
+      ? "Good evening"
+      : "Good night";
+
+  return { greeting: `${greeting},`, name: firstName };
 }
 
 function getNextRankProgress(xp = 0) {
@@ -635,13 +716,13 @@ function Logo({ onGoHome = () => {} }) {
   return (
     <button
       onClick={onGoHome}
-      className="flex items-center gap-3 text-left"
+      className="flex min-w-0 items-center gap-3 text-left"
     >
-      <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-rose-400 to-violet-500 text-sm font-black text-white shadow-lg shadow-rose-500/20">
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-rose-400 to-violet-500 text-sm font-black text-white shadow-lg shadow-rose-500/20">
         A
       </div>
-      <div>
-        <p className="text-base font-black tracking-tight text-white">A-Level Dojo</p>
+      <div className="min-w-0">
+        <p className="whitespace-nowrap text-base font-black tracking-tight text-white">A-Level Dojo</p>
         <p className="-mt-1 text-[11px] text-white/40">dashboard preview</p>
       </div>
     </button>
@@ -889,7 +970,6 @@ function SubjectSetupPage({ selectedIds, onToggle, onSave }) {
 
 function DashboardShellSidebar({
   open,
-  pinned = false,
   onOpen,
   onClose,
   onTogglePinned,
@@ -916,11 +996,11 @@ function DashboardShellSidebar({
     [Brain, "AI tutor", "ai"],
   ];
   const expandedNavClass =
-    "flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-sm font-bold transition-all duration-200 ease-out hover:-translate-y-0.5";
+    "flex w-full items-center gap-2.5 rounded-2xl px-3 py-2 text-sm font-bold transition-all duration-200 ease-out hover:-translate-y-0.5";
   const collapsedNavClass =
     "mx-auto flex h-11 w-11 items-center justify-center rounded-xl border-0 bg-transparent p-0 text-sm font-bold transition-all duration-200 ease-out hover:-translate-y-0.5";
   const expandedSubjectClass =
-    "flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-sm font-black text-white/62 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-white/[0.055] hover:text-white";
+    "flex w-full items-center gap-2.5 rounded-2xl px-3 py-2 text-sm font-black text-white/62 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-white/[0.055] hover:text-white";
   const collapsedSubjectClass =
     "mx-auto flex h-11 w-11 items-center justify-center rounded-xl border-0 bg-transparent p-0 text-sm font-black text-white/62 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-white/[0.055] hover:text-white";
 
@@ -928,17 +1008,24 @@ function DashboardShellSidebar({
     <aside
       onMouseEnter={onOpen}
       onMouseLeave={onClose}
-      className={`${open ? "w-[240px] p-3" : "w-16 px-2 py-3"} fixed left-0 top-0 z-40 hidden h-screen overflow-hidden border-r border-white/10 bg-slate-950/78 backdrop-blur-xl transition-all duration-200 ease-out lg:flex lg:flex-col`}
+      className={`fixed left-0 top-0 z-[80] hidden h-screen w-[230px] overflow-hidden bg-[#0b1020]/92 p-2.5 shadow-[18px_0_45px_rgba(0,0,0,0.18)] backdrop-blur-xl transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] lg:flex lg:flex-col ${
+        open ? "translate-x-0" : "-translate-x-full"
+      }`}
     >
-      <div className={`shrink-0 pb-4 ${open ? "flex items-center justify-between" : "flex flex-col items-center gap-3"}`}>
-        {open && <Logo onGoHome={onGoHome} />}
+      <div className="flex min-h-11 shrink-0 items-center justify-between gap-2.5 pb-4">
+        {open && (
+          <div className="min-w-0 flex-1">
+            <Logo onGoHome={onGoHome} />
+          </div>
+        )}
         <button
+          type="button"
           onClick={onTogglePinned}
-          className="flex h-[42px] w-[42px] items-center justify-center rounded-xl border border-white/10 bg-white/[0.035] text-white/65 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-white/[0.07] hover:text-white"
-          title={pinned ? "Return to hover sidebar" : "Pin sidebar open"}
-          aria-label={pinned ? "Return to hover sidebar" : "Pin sidebar open"}
+          className="inline-flex h-10 w-10 shrink-0 self-center items-center justify-center rounded-xl border border-white/10 bg-white/[0.05] text-white/70 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-white/10 hover:text-white"
+          title="Hide sidebar"
+          aria-label="Hide sidebar"
         >
-          {pinned ? <ChevronLeft size={20} /> : <Menu size={20} />}
+          <PanelLeft size={20} strokeWidth={2.2} />
         </button>
       </div>
 
@@ -1103,8 +1190,9 @@ function XPBadge({ xp, streak, onToggle, open }) {
   return (
     <div className="relative z-[9999]">
       <button
+        type="button"
         onClick={onToggle}
-        className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm font-black text-white/75 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-white/[0.07]"
+        className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm font-black text-white/75 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-white/[0.07]"
       >
         <span className={`h-2.5 w-2.5 rounded-full bg-gradient-to-r ${progress.currentRank.accent}`} />
         {progress.currentRank.name} · {xp} XP · {streak} day streak
@@ -1153,6 +1241,55 @@ function XPBadge({ xp, streak, onToggle, open }) {
           </details>
         </div>
       )}
+    </div>
+  );
+}
+
+function NotificationDropdown({ open, notifications = [] }) {
+  if (!open) return null;
+  const placeholders = [
+    ["Upcoming exam reminders", "Exam countdown alerts will appear here."],
+    ["XP gained", "Recent XP awards will show up as notifications."],
+    ["Subscription alerts", "Plan and upgrade notices will live here."],
+    ["System updates", "New A-Level Dojo features and resources will appear here."],
+  ];
+
+  return (
+    <div className="absolute right-0 top-[calc(100%+10px)] z-[9999] w-[21rem] rounded-3xl border border-white/10 bg-[#0b1020]/98 p-5 text-white shadow-2xl shadow-black/35 backdrop-blur-xl">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.22em] text-cyan-200">Notifications</p>
+          <h3 className="mt-1 text-xl font-black">Notifications</h3>
+        </div>
+        <span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs font-black text-white/45">
+          {notifications.length}
+        </span>
+      </div>
+
+      {notifications.length === 0 ? (
+        <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.035] p-4">
+          <p className="font-black text-white/75">No notifications yet</p>
+          <p className="mt-1 text-sm leading-6 text-white/42">Your reminders, XP updates, and system notices will appear here.</p>
+        </div>
+      ) : (
+        <div className="mt-4 grid gap-2">
+          {notifications.map((notification) => (
+            <div key={notification.id || notification.title} className="rounded-2xl border border-white/10 bg-white/[0.035] p-3">
+              <p className="text-sm font-black text-white">{notification.title}</p>
+              <p className="mt-1 text-xs leading-5 text-white/42">{notification.body}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="mt-4 grid gap-2">
+        {placeholders.map(([title, detail]) => (
+          <div key={title} className="rounded-2xl border border-white/10 bg-slate-950/55 p-3">
+            <p className="text-sm font-black text-white/65">{title}</p>
+            <p className="mt-1 text-xs leading-5 text-white/35">{detail}</p>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -1243,17 +1380,15 @@ function DashboardHome({
   upcomingExams,
   onSelectView,
   onOpenPricing,
+  greeting,
   needsCambridgeZone = false,
   onOpenAllExams = () => {},
 }) {
   return (
     <>
-      <section className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-        <MetricCard label="Upcoming exams" value={upcomingExams.length} detail="Personal timetable" />
-        <MetricCard label="Continue revision" value={`${stats.remainingPapers} left`} detail="Uncompleted selected papers" accent="text-violet-200" />
-        <MetricCard label="Mistakes to review" value={stats.mistakesOpen} detail="Unfixed questions" accent="text-rose-200" />
-        <MetricCard label="Completed papers" value={stats.completedCount} detail="Marked complete" accent="text-emerald-200" />
-        <MetricCard label="Saved papers" value={stats.savedCount} detail="Ready to revisit" accent="text-yellow-200" />
+      <section className="mx-auto mb-5 max-w-6xl rounded-[1.5rem] border border-white/10 bg-white/[0.04] px-5 py-4 shadow-2xl shadow-black/10 backdrop-blur-xl md:px-6">
+        <p className="text-lg font-semibold tracking-tight text-cyan-100/75 md:text-xl">{greeting.greeting}</p>
+        <h1 className="mt-0.5 text-3xl font-black tracking-tight text-white md:text-4xl">{greeting.name}</h1>
       </section>
 
       <section className="mx-auto mb-7 max-w-6xl">
@@ -1287,6 +1422,14 @@ function DashboardHome({
             ))}
           </div>
         )}
+      </section>
+
+      <section className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+        <MetricCard label="Upcoming exams" value={upcomingExams.length} detail="Personal timetable" />
+        <MetricCard label="Continue revision" value={`${stats.remainingPapers} left`} detail="Uncompleted selected papers" accent="text-violet-200" />
+        <MetricCard label="Mistakes to review" value={stats.mistakesOpen} detail="Unfixed questions" accent="text-rose-200" />
+        <MetricCard label="Completed papers" value={stats.completedCount} detail="Marked complete" accent="text-emerald-200" />
+        <MetricCard label="Saved papers" value={stats.savedCount} detail="Ready to revisit" accent="text-yellow-200" />
       </section>
 
       <section className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
@@ -3056,6 +3199,7 @@ function PastPapersPanel({
 }) {
   const [activePreview, setActivePreview] = useState(null);
   const [showMarkScheme, setShowMarkScheme] = useState(false);
+  const [showInsert, setShowInsert] = useState(false);
   const [maximizedPreview, setMaximizedPreview] = useState(false);
   const [paperSearch, setPaperSearch] = useState("");
   const [selectedQualification, setSelectedQualification] = useState("All qualifications");
@@ -3063,12 +3207,83 @@ function PastPapersPanel({
   const [selectedYear, setSelectedYear] = useState("All years");
   const [selectedSession, setSelectedSession] = useState("All sessions");
   const [completionFilter, setCompletionFilter] = useState("All papers");
+  const [annotationFilter, setAnnotationFilter] = useState("All markings");
+  const [annotatedPaperIds, setAnnotatedPaperIds] = useState([]);
 
   const [savedPaperIds, setSavedPaperIds] = useState(() =>
     readStorage("alevel-dojo-favourites", [])
   );
 
   const subjectPastPapers = getSubjectPapers(subject);
+
+  function hasSavedAnnotations(payload) {
+    if (!payload?.pages || typeof payload.pages !== "object") return false;
+    return Object.values(payload.pages).some(
+      (items) => Array.isArray(items) && items.length > 0
+    );
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+    const ids = subjectPastPapers.map((paper) => paperId(paper));
+
+    async function loadAnnotationStatus() {
+      if (!user?.id || subjectPastPapers.length === 0) {
+        setAnnotatedPaperIds([]);
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("pdf_annotations")
+        .select("paper_id, annotations")
+        .eq("user_id", user.id)
+        .eq("pdf_type", "question")
+        .in("paper_id", ids);
+
+      if (cancelled) return;
+
+      if (error) {
+        setAnnotatedPaperIds([]);
+        return;
+      }
+
+      setAnnotatedPaperIds(
+        (data || [])
+          .filter((row) => hasSavedAnnotations(row.annotations))
+          .map((row) => row.paper_id)
+      );
+    }
+
+    loadAnnotationStatus();
+
+    function handleAnnotationSaved(event) {
+      const { paperId: changedPaperId, pdfType, hasAnnotations } = event.detail || {};
+      if (pdfType !== "question" || !ids?.includes?.(changedPaperId)) return;
+
+      setAnnotatedPaperIds((current) => {
+        if (hasAnnotations) {
+          return current.includes(changedPaperId) ? current : [...current, changedPaperId];
+        }
+
+        return current.filter((item) => item !== changedPaperId);
+      });
+    }
+
+    function handleAnnotationReset(event) {
+      const { paperId: changedPaperId, pdfType } = event.detail || {};
+      if (pdfType !== "question") return;
+      setAnnotatedPaperIds((current) => current.filter((item) => item !== changedPaperId));
+    }
+
+    window.addEventListener("alevel-dojo:pdf-annotations-saved", handleAnnotationSaved);
+    window.addEventListener("alevel-dojo:pdf-annotations-reset", handleAnnotationReset);
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener("alevel-dojo:pdf-annotations-saved", handleAnnotationSaved);
+      window.removeEventListener("alevel-dojo:pdf-annotations-reset", handleAnnotationReset);
+    };
+  }, [subject.id, user?.id]);
 
   useEffect(() => {
     if (persistedPreview?.type !== "pastPaper") return;
@@ -3083,25 +3298,42 @@ function PastPapersPanel({
         mode: persistedPreview.mode || "preview",
       });
       setShowMarkScheme(Boolean(persistedPreview.showMarkScheme));
+      setShowInsert(Boolean(persistedPreview.showInsert));
     }
   }, [persistedPreview?.paperId, persistedPreview?.type, subject.id]);
 
   function openPaperPreview(paper, mode, showMarkSchemeNext = false) {
     setActivePreview({ paper, mode });
     setShowMarkScheme(showMarkSchemeNext);
+    setShowInsert(false);
     onPreviewChange({
       type: "pastPaper",
       paperId: paperId(paper),
       mode,
       showMarkScheme: showMarkSchemeNext,
+      showInsert: false,
     });
   }
 
   function closePaperPreview() {
     setActivePreview(null);
     setShowMarkScheme(false);
+    setShowInsert(false);
     setMaximizedPreview(false);
     onPreviewChange(null);
+  }
+
+  function toggleInsert() {
+    if (!activePreview) return;
+    const next = !showInsert;
+    setShowInsert(next);
+    onPreviewChange({
+      type: "pastPaper",
+      paperId: paperId(activePreview.paper),
+      mode: activePreview.mode,
+      showMarkScheme,
+      showInsert: next,
+    });
   }
 
   const availableQualifications = [
@@ -3127,6 +3359,7 @@ function PastPapersPanel({
   const filteredPapers = subjectPastPapers.filter((paper) => {
     const id = paperId(paper);
     const isCompleted = completedPaperIds.includes(id);
+    const isAnnotated = annotatedPaperIds.includes(id);
 
     const text = `${paper.board} ${paper.subject} ${paper.variant || ""} ${
       paper.qualification || ""
@@ -3141,9 +3374,16 @@ function PastPapersPanel({
       (selectedSession === "All sessions" || paper.session === selectedSession) &&
       (completionFilter === "All papers" ||
         (completionFilter === "Complete" && isCompleted) ||
-        (completionFilter === "Incomplete" && !isCompleted))
+        (completionFilter === "Incomplete" && !isCompleted)) &&
+      (annotationFilter === "All markings" ||
+        (annotationFilter === "Marked papers" && isAnnotated) ||
+        (annotationFilter === "Unmarked papers" && !isAnnotated))
     );
   });
+  const activePaperInsert = activePreview
+    ? getPaperInsert(activePreview.paper, subject)
+    : null;
+
     function requireLogin(action) {
     if (!user) {
         onRequireLogin();
@@ -3198,6 +3438,7 @@ function PastPapersPanel({
     setSelectedYear("All years");
     setSelectedSession("All sessions");
     setCompletionFilter("All papers");
+    setAnnotationFilter("All markings");
   }
 
   return (
@@ -3250,6 +3491,18 @@ function PastPapersPanel({
                   {showMarkScheme ? "Hide MS" : "Show MS"}
                 </button>
               )}
+              {activePaperInsert && (
+                <button
+                  onClick={toggleInsert}
+                  className={`rounded-xl border px-4 py-2 text-sm font-black transition ${
+                    showInsert
+                      ? "border-cyan-300 bg-cyan-300 text-slate-950"
+                      : "border-cyan-300/30 bg-cyan-300/10 text-cyan-100 hover:bg-cyan-300/15"
+                  }`}
+                >
+                  {showInsert ? "Hide Insert" : "Show Insert"}
+                </button>
+              )}
                 <button
                     onClick={() => setMaximizedPreview(!maximizedPreview)}
                     className="rounded-xl bg-cyan-300 px-4 py-2 text-sm font-black text-slate-950"
@@ -3270,9 +3523,10 @@ function PastPapersPanel({
             <div
             className={
                 activePreview.mode === "edit"
-                ? "flex gap-4 overflow-x-auto"
+                ? "flex justify-center gap-4 overflow-x-auto"
                 : `grid gap-4 ${
-                    showMarkScheme && activePreview.paper.markScheme
+                    (showMarkScheme && activePreview.paper.markScheme) ||
+                    (showInsert && activePaperInsert)
                         ? "xl:grid-cols-2"
                         : ""
                     }`
@@ -3296,6 +3550,9 @@ function PastPapersPanel({
                     activePreview.paper.questionPaper || activePreview.paper.pdf
                 }
                 editable={activePreview.mode === "edit"}
+                user={user}
+                paperId={paperId(activePreview.paper)}
+                pdfType="question"
                 />
             </div>
 
@@ -3319,6 +3576,26 @@ function PastPapersPanel({
                 />
                 </div>
             )}
+            {showInsert && activePaperInsert && (
+                <div
+                className={
+                    activePreview.mode === "edit"
+                    ? maximizedPreview
+                        ? "w-[850px] shrink-0"
+                        : "w-[560px] shrink-0"
+                    : ""
+                }
+                >
+                <p className="mb-2 text-sm font-black text-cyan-200">
+                    {activePaperInsert.label}
+                </p>
+
+                <PdfViewer
+                    fileUrl={activePaperInsert.url}
+                    editable={false}
+                />
+                </div>
+            )}
             </div>
         </div>
       ) : (
@@ -3331,7 +3608,7 @@ function PastPapersPanel({
               className="mb-3 w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-4 text-white outline-none placeholder:text-white/35 focus:border-cyan-300"
             />
 
-            <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
+            <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-7">
               <select
                 value={selectedQualification}
                 onChange={(event) => setSelectedQualification(event.target.value)}
@@ -3382,6 +3659,16 @@ function PastPapersPanel({
                 <option>Incomplete</option>
               </select>
 
+              <select
+                value={annotationFilter}
+                onChange={(event) => setAnnotationFilter(event.target.value)}
+                className="rounded-xl border border-white/10 bg-slate-950 px-3 py-3 text-sm text-white outline-none focus:border-cyan-300"
+              >
+                <option>All markings</option>
+                <option>Marked papers</option>
+                <option>Unmarked papers</option>
+              </select>
+
               <button
                 onClick={clearFilters}
                 className="rounded-xl bg-white px-4 py-3 text-sm font-black text-slate-950"
@@ -3401,6 +3688,8 @@ function PastPapersPanel({
                 const id = paperId(paper);
                 const isCompleted = completedPaperIds.includes(id);
                 const isSaved = savedPaperIds.includes(id);
+                const isAnnotated = annotatedPaperIds.includes(id);
+                const paperInsert = getPaperInsert(paper, subject);
 
                 return (
                   <div
@@ -3409,9 +3698,25 @@ function PastPapersPanel({
                   >
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
-                        <h4 className="font-black text-white">
-                          {paperLabel(paper)}
-                        </h4>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h4 className="font-black text-white">
+                            {paperLabel(paper)}
+                          </h4>
+
+                          {isAnnotated && (
+                            <span className="inline-flex items-center gap-1 rounded-full border border-cyan-300/20 bg-cyan-300/10 px-2 py-0.5 text-[11px] font-black uppercase tracking-[0.12em] text-cyan-100">
+                              <Edit3 size={11} />
+                              Marked
+                            </span>
+                          )}
+
+                          {paperInsert && (
+                            <span className="inline-flex items-center gap-1 rounded-full border border-violet-300/20 bg-violet-300/10 px-2 py-0.5 text-[11px] font-black uppercase tracking-[0.12em] text-violet-100">
+                              <FileText size={11} />
+                              {paperInsert.label}
+                            </span>
+                          )}
+                        </div>
 
                         <p className="mt-1 text-sm text-white/40">
                           {paper.board} • {paper.subject}
@@ -3451,26 +3756,14 @@ function PastPapersPanel({
                       </div>
                     </div>
 
-                    <div className="mt-4 flex flex-wrap gap-3">
-                      <button
-                        onClick={() =>
-                          requireLogin(() => {
-                            openPaperPreview(paper, "preview", true);
-                          })
-                        }
-                        className="inline-flex items-center gap-2 rounded-xl bg-cyan-300 px-4 py-2 text-sm font-black text-slate-950 hover:bg-cyan-200"
-                      >
-                        <Eye size={16} />
-                        Preview Q + MS
-                      </button>
-
+                    <div className="mt-4 flex flex-wrap items-center gap-3">
                       <button
                        onClick={() =>
   requireLogin(() => {
     openPaperPreview(paper, "edit", false);
   })
 }
-                        className="inline-flex items-center gap-2 rounded-xl bg-[#ff554f] px-4 py-2 text-sm font-black text-white hover:brightness-110"
+                        className="inline-flex items-center gap-2 rounded-xl bg-cyan-300 px-5 py-2.5 text-sm font-black text-slate-950 shadow-[0_0_22px_rgba(34,211,238,0.18)] transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-cyan-200"
                       >
                         <Edit3 size={16} />
                         PDF Edit
@@ -3688,6 +3981,9 @@ function TopicTestsPanel({
               activePreview.paper.markScheme
             }
             editable={activePreview.mode === "edit"}
+            user={user}
+            paperId={paperId(activePreview.paper)}
+            pdfType="topic-test"
           />
         </div>
       ) : (
@@ -4143,8 +4439,10 @@ export default function Dashboard({
   );
   const [dashboardProfile, setDashboardProfile] = useState(profile);
   const [loadingSubjects, setLoadingSubjects] = useState(Boolean(user && !profile));
-  const [sidebarPinned, setSidebarPinned] = useState(() => readBooleanStorage("aleveldojo_sidebar_pinned", true));
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarPinnedOpen, setSidebarPinnedOpen] = useState(() =>
+    readBooleanStorage("aleveldojo_sidebar_pinned_open", true)
+  );
+  const [sidebarPreviewOpen, setSidebarPreviewOpen] = useState(false);
   const [activeView, setActiveView] = useState(persistedDashboardState.activeView || "dashboard");
   const [activeSubjectId, setActiveSubjectId] = useState(persistedDashboardState.activeSubjectId || null);
   const [subjectSection, setSubjectSection] = useState(persistedDashboardState.subjectSection || "overview");
@@ -4162,8 +4460,12 @@ export default function Dashboard({
   const [xpEvents, setXpEvents] = useState([]);
   const [xpEventsLoaded, setXpEventsLoaded] = useState(false);
   const [xpMenuOpen, setXpMenuOpen] = useState(false);
+  const [notificationMenuOpen, setNotificationMenuOpen] = useState(false);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [dashboardSearch, setDashboardSearch] = useState("");
+  const [dashboardSearchOpen, setDashboardSearchOpen] = useState(false);
   const xpMenuCloseTimeout = useRef(null);
+  const notificationMenuCloseTimeout = useRef(null);
   const profileMenuCloseTimeout = useRef(null);
 
   useEffect(() => {
@@ -4241,9 +4543,9 @@ export default function Dashboard({
   }, [completedPaperIds]);
 
   useEffect(() => {
-    writeStorage("aleveldojo_sidebar_pinned", sidebarPinned);
-    if (!sidebarPinned) setSidebarOpen(false);
-  }, [sidebarPinned]);
+    writeStorage("aleveldojo_sidebar_pinned_open", sidebarPinnedOpen);
+    if (sidebarPinnedOpen) setSidebarPreviewOpen(false);
+  }, [sidebarPinnedOpen]);
 
   useEffect(() => {
     async function loadCalendarEvents() {
@@ -4307,6 +4609,25 @@ export default function Dashboard({
   }));
   const activeSubjects = subjectsWithProgress.filter((subject) => selectedIds.includes(subject.id));
   const activeSubject = subjectsWithProgress.find((subject) => subject.id === activeSubjectId) || null;
+  const dashboardSearchTerm = dashboardSearch.trim().toLowerCase();
+  const dashboardFeatureResults = [
+    { label: "Dashboard", detail: "Home overview", action: () => selectView("dashboard"), keywords: "home overview" },
+    { label: "Past papers", detail: "Browse papers", action: () => selectView("pastpapers"), keywords: "paper exam pdf" },
+    { label: "Topic tests", detail: "Topic practice", action: () => selectView("topictests"), keywords: "topic test practice" },
+    { label: "Exam calendar", detail: "Upcoming exams", action: () => selectView("calendar"), keywords: "calendar timetable dates" },
+    { label: "Mistakes tracker", detail: "Review mistakes", action: () => selectView("mistakes"), keywords: "mistakes review wrong fixed" },
+    { label: "Grade boundaries", detail: "Boundary trends", action: () => selectView("boundaries"), keywords: "grades marks boundary graph" },
+    { label: "AI tutor", detail: "Premium tutor", action: () => selectView("ai"), keywords: "ai tutor study partner" },
+    { label: "Profile", detail: "Account profile", action: () => setProfileOpen(true), keywords: "account user avatar" },
+    { label: "Settings", detail: "Preferences and subjects", action: () => selectView("settings"), keywords: "preferences profile subjects grades" },
+  ].filter((item) => {
+    if (!dashboardSearchTerm) return false;
+    return `${item.label} ${item.detail} ${item.keywords}`.toLowerCase().includes(dashboardSearchTerm);
+  });
+  const dashboardSubjectResults = activeSubjects.filter((subject) => {
+    if (!dashboardSearchTerm) return false;
+    return `${subject.name} ${subject.board}`.toLowerCase().includes(dashboardSearchTerm);
+  });
 
   useEffect(() => {
     if (activeSubjectId && !subjects.some((subject) => subject.id === activeSubjectId)) {
@@ -4351,6 +4672,13 @@ export default function Dashboard({
   };
   const currentXp = Number(dashboardProfile?.xp || 0);
   const currentStreak = Number(dashboardProfile?.streak_count || 0);
+  const dashboardDisplayName =
+    dashboardProfile?.full_name ||
+    dashboardProfile?.name ||
+    user?.user_metadata?.full_name ||
+    user?.email?.split("@")[0] ||
+    "";
+  const dashboardGreeting = getDashboardGreeting(dashboardDisplayName);
   const achievementContext = achievementStats({
     completedPaperIds,
     mistakes,
@@ -4369,7 +4697,8 @@ export default function Dashboard({
     selectedSubjects: activeSubjects,
     cambridgeZone,
   });
-  const sidebarVisible = sidebarPinned || sidebarOpen;
+  const sidebarVisible = sidebarPinnedOpen || sidebarPreviewOpen;
+  const sidebarAffectsLayout = sidebarPinnedOpen;
   const allCalendarEvents = [
     ...examDates.map(toOfficialCalendarEvent),
     ...calendarEvents.map(toUserCalendarEvent),
@@ -4605,6 +4934,7 @@ export default function Dashboard({
     }
     setProfileMenuOpen(true);
     setXpMenuOpen(false);
+    setNotificationMenuOpen(false);
   }
 
   function closeProfileMenuSoon() {
@@ -4621,6 +4951,7 @@ export default function Dashboard({
       window.clearTimeout(xpMenuCloseTimeout.current);
     }
     setXpMenuOpen(true);
+    setNotificationMenuOpen(false);
     setProfileMenuOpen(false);
   }
 
@@ -4631,6 +4962,32 @@ export default function Dashboard({
     xpMenuCloseTimeout.current = window.setTimeout(() => {
       setXpMenuOpen(false);
     }, 180);
+  }
+
+  function openNotificationMenu() {
+    if (notificationMenuCloseTimeout.current) {
+      window.clearTimeout(notificationMenuCloseTimeout.current);
+    }
+    setNotificationMenuOpen(true);
+    setXpMenuOpen(false);
+    setProfileMenuOpen(false);
+  }
+
+  function closeNotificationMenuSoon() {
+    if (notificationMenuCloseTimeout.current) {
+      window.clearTimeout(notificationMenuCloseTimeout.current);
+    }
+    notificationMenuCloseTimeout.current = window.setTimeout(() => {
+      setNotificationMenuOpen(false);
+    }, 180);
+  }
+
+  function toggleSidebarPinnedOpen() {
+    setSidebarPinnedOpen((current) => {
+      const next = !current;
+      if (next) setSidebarPreviewOpen(false);
+      return next;
+    });
   }
 
   if (loadingSubjects) {
@@ -4673,16 +5030,23 @@ export default function Dashboard({
       />
 
       <div className="relative z-10 min-h-screen">
+        {!sidebarPinnedOpen && (
+          <div
+            className="fixed left-0 top-0 z-[90] hidden h-screen w-3 lg:block"
+            onMouseEnter={() => setSidebarPreviewOpen(true)}
+            aria-hidden="true"
+          />
+        )}
+
         <DashboardShellSidebar
           open={sidebarVisible}
-          pinned={sidebarPinned}
           onOpen={() => {
-            if (!sidebarPinned) setSidebarOpen(true);
+            if (!sidebarPinnedOpen) setSidebarPreviewOpen(true);
           }}
           onClose={() => {
-            if (!sidebarPinned) setSidebarOpen(false);
+            if (!sidebarPinnedOpen) setSidebarPreviewOpen(false);
           }}
-          onTogglePinned={() => setSidebarPinned((current) => !current)}
+          onTogglePinned={toggleSidebarPinnedOpen}
           activeView={activeView}
           onSelectView={selectView}
           activeSubjects={activeSubjects}
@@ -4696,7 +5060,7 @@ export default function Dashboard({
           xp={currentXp}
         />
 
-        <main className={`${sidebarVisible ? "lg:ml-[240px]" : "lg:ml-[64px]"} px-5 py-5 transition-all duration-200 ease-out md:px-8 lg:px-10`}>
+        <main className={`${sidebarAffectsLayout ? "lg:ml-[230px]" : "lg:ml-0"} px-5 pb-5 pt-20 transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] md:px-8 lg:px-10`}>
           <div className="mb-4 flex items-center justify-between rounded-3xl border border-white/10 bg-white/[0.035] px-4 py-3 lg:hidden">
             <Logo onGoHome={onGoHome} />
             <select
@@ -4715,15 +5079,91 @@ export default function Dashboard({
             </select>
           </div>
 
-          <header className="relative z-[9999] mb-6 flex flex-wrap items-center justify-between gap-4 overflow-visible rounded-3xl border border-white/10 bg-white/[0.035] px-5 py-4 backdrop-blur-xl">
-            <div>
-              <p className="text-sm text-white/40">Welcome back</p>
-              <h1 className="text-2xl font-black tracking-tight text-white">
-                {activeSubject ? `${activeSubject.name} workspace` : "Your revision dashboard"}
-              </h1>
+          <header className={`fixed right-0 top-0 z-[70] flex items-center justify-between gap-3 overflow-visible border-b border-white/[0.08] bg-[#0b1020]/92 px-5 py-2 backdrop-blur-xl transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] md:px-8 lg:px-10 ${
+            sidebarAffectsLayout ? "left-0 lg:left-[230px]" : "left-0"
+          }`}>
+            <div className="flex min-w-0 flex-1 items-center gap-3">
+              {!sidebarVisible && (
+                <button
+                  type="button"
+                  onClick={toggleSidebarPinnedOpen}
+                  className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.05] text-white/70 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-white/10 hover:text-white"
+                  title="Show sidebar"
+                  aria-label="Show sidebar"
+                >
+                  <PanelLeft size={20} strokeWidth={2.2} />
+                </button>
+              )}
+              <div className="relative z-[9999] min-w-0 flex-1 md:max-w-xl">
+                <Search className="pointer-events-none absolute left-4 top-1/2 z-10 -translate-y-1/2 text-white/35" size={18} />
+                <input
+                  value={dashboardSearch}
+                  onChange={(event) => {
+                    setDashboardSearch(event.target.value);
+                    setDashboardSearchOpen(true);
+                  }}
+                  onFocus={() => setDashboardSearchOpen(true)}
+                  onBlur={() => window.setTimeout(() => setDashboardSearchOpen(false), 140)}
+                  placeholder="Search subjects, features, papers..."
+                  className="h-10 w-full rounded-2xl border border-white/10 bg-white/[0.045] pl-11 pr-4 text-sm font-bold text-white outline-none placeholder:text-white/32 transition-all duration-200 ease-out focus:border-cyan-300/40 focus:bg-white/[0.065] focus:ring-2 focus:ring-cyan-300/10"
+                />
+                {dashboardSearchOpen && dashboardSearchTerm && (
+                  <div className="absolute left-0 top-[calc(100%+10px)] z-[9999] w-full overflow-hidden rounded-3xl border border-white/10 bg-[#0b1020]/98 p-2 text-white shadow-2xl shadow-black/35 backdrop-blur-xl">
+                    {dashboardFeatureResults.length > 0 && (
+                      <div>
+                        <p className="px-3 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-cyan-200/60">Features</p>
+                        <div className="grid gap-1">
+                          {dashboardFeatureResults.map((item) => (
+                            <button
+                              type="button"
+                              key={item.label}
+                              onMouseDown={(event) => {
+                                event.preventDefault();
+                                item.action();
+                                setDashboardSearch("");
+                                setDashboardSearchOpen(false);
+                              }}
+                              className="rounded-2xl px-3 py-2.5 text-left transition-all duration-200 ease-out hover:bg-cyan-300/10"
+                            >
+                              <p className="text-sm font-black text-white">{item.label}</p>
+                              <p className="mt-0.5 text-xs font-bold text-white/38">{item.detail}</p>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {dashboardSubjectResults.length > 0 && (
+                      <div className={dashboardFeatureResults.length > 0 ? "mt-2 border-t border-white/10 pt-2" : ""}>
+                        <p className="px-3 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-violet-200/60">Subjects</p>
+                        <div className="grid gap-1">
+                          {dashboardSubjectResults.map((subject) => (
+                            <button
+                              type="button"
+                              key={subject.id}
+                              onMouseDown={(event) => {
+                                event.preventDefault();
+                                openSubject(subject.id);
+                                setDashboardSearch("");
+                                setDashboardSearchOpen(false);
+                              }}
+                              className="rounded-2xl px-3 py-2.5 text-left transition-all duration-200 ease-out hover:bg-cyan-300/10"
+                            >
+                              <p className="text-sm font-black text-white">{subject.name}</p>
+                              <p className="mt-0.5 text-xs font-bold text-cyan-100/55">{subject.board}</p>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {dashboardFeatureResults.length === 0 && dashboardSubjectResults.length === 0 && (
+                      <p className="px-3 py-4 text-sm font-bold text-white/42">No matching dashboard results.</p>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
 
-            <div className="relative z-[9999] flex flex-wrap items-center gap-3 overflow-visible">
+            <div className="relative z-[9999] flex shrink-0 items-center gap-3 overflow-visible">
               <div
                 className="relative z-[9999]"
                 onMouseEnter={openXpMenu}
@@ -4735,8 +5175,36 @@ export default function Dashboard({
                   open={xpMenuOpen}
                   onToggle={() => {
                     setXpMenuOpen((current) => !current);
+                    setNotificationMenuOpen(false);
                     setProfileMenuOpen(false);
                   }}
+                />
+              </div>
+              <div
+                className="relative z-[9999]"
+                onMouseEnter={openNotificationMenu}
+                onMouseLeave={closeNotificationMenuSoon}
+              >
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNotificationMenuOpen((current) => !current);
+                    setXpMenuOpen(false);
+                    setProfileMenuOpen(false);
+                  }}
+                  onFocus={openNotificationMenu}
+                  className="relative inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-slate-950/70 text-white/70 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-white/[0.07] hover:text-cyan-100"
+                  aria-label="Notifications"
+                  title="Notifications"
+                >
+                  <Bell size={20} />
+                  {upcomingExams.length > 0 && (
+                    <span className="absolute right-2 top-2 h-2.5 w-2.5 rounded-full bg-rose-400 shadow-lg shadow-rose-400/30" />
+                  )}
+                </button>
+                <NotificationDropdown
+                  open={notificationMenuOpen}
+                  notifications={[]}
                 />
               </div>
               <div
@@ -4745,12 +5213,14 @@ export default function Dashboard({
                 onMouseLeave={closeProfileMenuSoon}
               >
                 <button
+                  type="button"
                   onClick={() => {
                     setProfileMenuOpen((current) => !current);
                     setXpMenuOpen(false);
+                    setNotificationMenuOpen(false);
                   }}
                   onFocus={openProfileMenu}
-                  className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm font-black text-white/70 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-white/[0.07]"
+                  className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm font-black text-white/70 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-white/[0.07]"
                 >
                   <AvatarCircle profile={dashboardProfile} user={user} size="h-7 w-7" />
                   Profile
@@ -4850,6 +5320,7 @@ export default function Dashboard({
               upcomingExams={upcomingExams}
               onSelectView={selectView}
               onOpenPricing={onOpenPricing}
+              greeting={dashboardGreeting}
               needsCambridgeZone={needsCambridgeZone}
               onOpenAllExams={() => setAllExamsCalendarOpen(true)}
             />
