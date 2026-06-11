@@ -1,5 +1,6 @@
 import { papers } from "./papersData";
 import { examDates } from "./data/examDates";
+import { gradeBoundaries as generatedGradeBoundaries } from "./data/gradeBoundaries.generated";
 import { supabase } from "./supabaseClient";
 import PdfViewer from "./PdfViewer";
 import Watermark from "./Watermark";
@@ -99,13 +100,6 @@ const boardColors = {
     soft: "bg-violet-400/10 border-violet-300/20",
   },
 };
-
-const gradeBoundaryData = [
-  { year: "2023", astar: 79, a: 66, b: 54 },
-  { year: "2024", astar: 82, a: 69, b: 57 },
-  { year: "2025", astar: 84, a: 72, b: 60 },
-  { year: "2026", astar: 87, a: 75, b: 63 },
-];
 
 const plans = [
   ["Free", "Past papers, topic tests, save progress"],
@@ -2046,121 +2040,538 @@ function AllExamsCalendarModal({
 }
 
 function GradeBoundariesPanel({ subjects = [] }) {
-  const fallbackSubjects = allSubjects();
-  const subjectOptions = subjects.length ? subjects : fallbackSubjects;
-  const [selectedKey, setSelectedKey] = useState(() => {
-    const first = subjectOptions[0];
-    return first ? `${first.board}|${first.name}` : "";
-  });
+  const grades = ["A*", "A", "B", "C", "D", "E"];
+  const gradeColors = {
+    "A*": "#38bdf8",
+    A: "#8b5cf6",
+    B: "#c084fc",
+    C: "#fb7185",
+    D: "#fbbf24",
+    E: "#2dd4bf",
+  };
+  const monthRank = { jan: 1, january: 1, may: 2, june: 3, jun: 3, oct: 4, october: 4, nov: 5, november: 5 };
+  const selectedSubjects = subjects || [];
+  const [boundaryRows, setBoundaryRows] = useState([]);
+  const [loadingBoundaries, setLoadingBoundaries] = useState(true);
+  const [boundaryError, setBoundaryError] = useState("");
+  const [selectedSubjectId, setSelectedSubjectId] = useState(selectedSubjects[0]?.id || "");
+  const selectedSubject = selectedSubjects.find((subject) => subject.id === selectedSubjectId) || selectedSubjects[0] || null;
+  const [selectedBoard, setSelectedBoard] = useState(selectedSubject?.board || "");
+  const [selectedUnit, setSelectedUnit] = useState("");
+  const [viewMode, setViewMode] = useState("All grades");
+  const [boundaryTooltip, setBoundaryTooltip] = useState(null);
+
+  function loadGradeBoundaries() {
+    setLoadingBoundaries(true);
+    setBoundaryError("");
+    const normalizeBoundaryRows = (rows = []) =>
+      rows.map((row) => ({
+        ...row,
+        max_mark: row.max_mark ?? row.maxMark,
+      }));
+    setBoundaryRows(normalizeBoundaryRows(generatedGradeBoundaries));
+    setLoadingBoundaries(false);
+  }
 
   useEffect(() => {
-    if (!selectedKey && subjectOptions[0]) {
-      setSelectedKey(`${subjectOptions[0].board}|${subjectOptions[0].name}`);
+    loadGradeBoundaries();
+  }, []);
+
+  function boundarySubjectKey(value = "") {
+    return normalizeSubjectName(value).replace(/[^a-z0-9]/g, "");
+  }
+
+  function boundaryBoardKey(value = "") {
+    return String(value).toLowerCase().replace(/[^a-z0-9]/g, "");
+  }
+
+  function boundaryUnit(row) {
+    return row.unit || row.paper || "Paper";
+  }
+
+  function boundaryMonth(row) {
+    return String(row.month || row.session || "").split(" ")[0] || "";
+  }
+
+  function boundaryDateRank(row) {
+    return Number(row.year || 0) * 10 + (monthRank[boundaryMonth(row).toLowerCase()] || 0);
+  }
+
+  function boundarySessionLabel(row) {
+    return row.session || `${row.month || ""} ${row.year || ""}`.trim() || String(row.year || "");
+  }
+
+  function boundaryPercent(mark, maxMark) {
+    if (!Number(maxMark) || mark === undefined || mark === null || mark === "") return null;
+    return (Number(mark) / Number(maxMark)) * 100;
+  }
+
+  function boundaryMark(row, grade) {
+    return row.boundaries?.[grade] ?? row[grade] ?? row[grade.toLowerCase()];
+  }
+
+  function nextSeasonLabel(rows) {
+    const latest = rows[rows.length - 1];
+    if (!latest) return "Next season";
+    const month = boundaryMonth(latest).toLowerCase();
+    if (month.startsWith("jan")) return `June ${latest.year}`;
+    if (month.startsWith("jun") || month.startsWith("may")) return `Nov ${latest.year}`;
+    return `Jan ${Number(latest.year || 0) + 1}`;
+  }
+
+  function predictBoundary(rows, grade) {
+    const points = rows
+      .map((row, index) => ({ x: index, y: Number(boundaryMark(row, grade)), max: Number(row.max_mark) || 0 }))
+      .filter((point) => Number.isFinite(point.y));
+    if (!points.length) return null;
+    const maxMark = points[points.length - 1].max || Math.max(...points.map((point) => point.y), 1);
+    if (points.length === 1) return Math.max(0, Math.min(maxMark, Math.round(points[0].y)));
+    const n = points.length;
+    const sumX = points.reduce((sum, point) => sum + point.x, 0);
+    const sumY = points.reduce((sum, point) => sum + point.y, 0);
+    const sumXY = points.reduce((sum, point) => sum + point.x * point.y, 0);
+    const sumXX = points.reduce((sum, point) => sum + point.x * point.x, 0);
+    const denominator = n * sumXX - sumX * sumX;
+    const slope = denominator === 0 ? 0 : (n * sumXY - sumX * sumY) / denominator;
+    const intercept = (sumY - slope * sumX) / n;
+    return Math.max(0, Math.min(maxMark, Math.round(intercept + slope * n)));
+  }
+
+  function trendFor(rows, grade) {
+    const values = rows.map((row) => Number(boundaryMark(row, grade))).filter(Number.isFinite);
+    if (values.length < 2) return "stable";
+    const change = values[values.length - 1] - values[0];
+    if (change >= 2) return "increasing";
+    if (change <= -2) return "decreasing";
+    return "stable";
+  }
+
+  const dataForSelectedSubject = useMemo(() => {
+    if (!selectedSubject) return [];
+    return boundaryRows.filter(
+      (row) =>
+        boundarySubjectKey(row.subject) === boundarySubjectKey(selectedSubject.name) &&
+        boundaryBoardKey(row.board) === boundaryBoardKey(selectedBoard || selectedSubject.board)
+    );
+  }, [boundaryRows, selectedBoard, selectedSubject]);
+
+  const boardOptions = useMemo(() => {
+    const boards = unique(
+      boundaryRows
+        .filter((row) => selectedSubject && boundarySubjectKey(row.subject) === boundarySubjectKey(selectedSubject.name))
+        .map((row) => row.board)
+        .filter(Boolean)
+    );
+    if (selectedSubject?.board && !boards.includes(selectedSubject.board)) boards.unshift(selectedSubject.board);
+    return boards.length ? boards : selectedSubject?.board ? [selectedSubject.board] : [];
+  }, [boundaryRows, selectedSubject]);
+
+  const unitOptions = useMemo(
+    () => sortUnits(unique(dataForSelectedSubject.map(boundaryUnit))),
+    [dataForSelectedSubject]
+  );
+
+  useEffect(() => {
+    if (!selectedSubjectId && selectedSubjects[0]) {
+      setSelectedSubjectId(selectedSubjects[0].id);
     }
-  }, [selectedKey, subjectOptions]);
+  }, [selectedSubjectId, selectedSubjects]);
 
-  const [board, subjectName] = selectedKey.split("|");
-  const subjectOffset = Math.abs((subjectName || "A-Level").split("").reduce((sum, char) => sum + char.charCodeAt(0), 0) % 7);
-  const data = gradeBoundaryData.map((row, index) => ({
-    ...row,
-    astar: row.astar + subjectOffset + (board === "Edexcel" ? 2 : board === "Cambridge" ? -1 : 0),
-    a: row.a + Math.max(0, subjectOffset - 2),
-    b: row.b + Math.max(0, subjectOffset - 3) + (index === 3 ? 1 : 0),
+  useEffect(() => {
+    if (selectedSubject?.board && (!selectedBoard || !boardOptions.includes(selectedBoard))) {
+      setSelectedBoard(boardOptions[0] || selectedSubject.board);
+    }
+  }, [boardOptions, selectedBoard, selectedSubject]);
+
+  useEffect(() => {
+    if (unitOptions.length && !unitOptions.includes(selectedUnit)) {
+      setSelectedUnit(unitOptions[0]);
+    }
+    if (!unitOptions.length && selectedUnit) {
+      setSelectedUnit("");
+    }
+  }, [selectedUnit, unitOptions]);
+
+  const filteredRows = useMemo(() => {
+    return dataForSelectedSubject
+      .filter((row) => !selectedUnit || boundaryUnit(row) === selectedUnit)
+      .sort((a, b) => boundaryDateRank(b) - boundaryDateRank(a));
+  }, [dataForSelectedSubject, selectedUnit]);
+
+  const recentRows = filteredRows.slice(0, 5);
+  const chronologicalRows = [...recentRows].sort((a, b) => boundaryDateRank(a) - boundaryDateRank(b));
+  const visibleGrades = viewMode === "All grades" ? grades : [viewMode];
+  const predictionLabel = nextSeasonLabel(chronologicalRows);
+  const predictions = Object.fromEntries(visibleGrades.map((grade) => [grade, predictBoundary(chronologicalRows, grade)]));
+  const chartMarks = chronologicalRows.flatMap((row) =>
+    visibleGrades.map((grade) => Number(boundaryMark(row, grade))).filter((mark) => Number.isFinite(mark))
+  );
+  const predictionMarks = Object.values(predictions).filter((mark) => Number.isFinite(mark));
+  const maxChartMark = Math.max(...chartMarks, ...predictionMarks, ...chronologicalRows.map((row) => Number(row.max_mark) || 0), 1);
+  const minChartMark = Math.min(...chartMarks, 0);
+  const chartWidth = 760;
+  const chartHeight = 330;
+  const chart = { left: 58, right: 44, top: 28, bottom: 58 };
+  const plotWidth = chartWidth - chart.left - chart.right;
+  const plotHeight = chartHeight - chart.top - chart.bottom;
+
+  function chartCoords(index, mark, totalPoints = chronologicalRows.length) {
+    const denominator = Math.max(1, totalPoints);
+    const x = chart.left + (index / denominator) * plotWidth;
+    const y = chart.top + (1 - (mark - minChartMark) / Math.max(1, maxChartMark - minChartMark)) * plotHeight;
+    return { x, y };
+  }
+
+  function chartPoint(row, index, grade) {
+    const mark = Number(boundaryMark(row, grade));
+    if (!Number.isFinite(mark)) return null;
+    const { x, y } = chartCoords(index, mark);
+    return { x, y, mark, row };
+  }
+
+  const chartLines = visibleGrades.map((grade) => ({
+    grade,
+    color: gradeColors[grade],
+    points: chronologicalRows
+      .map((row, index) => chartPoint(row, index, grade))
+      .filter(Boolean),
+    prediction: Number.isFinite(predictions[grade])
+      ? { ...chartCoords(chronologicalRows.length, predictions[grade]), mark: predictions[grade] }
+      : null,
   }));
 
-  const chartLines = [
-    { key: "astar", label: "A*", color: "#22d3ee" },
-    { key: "a", label: "A", color: "#a78bfa" },
-    { key: "b", label: "B", color: "#fb7185" },
-  ].map((line) => ({
-    ...line,
-    points: data
-      .map((row, index) => {
-        const x = 55 + index * 105;
-        const y = 190 - ((row[line.key] - 45) / 55) * 150;
-        return `${x},${Math.max(32, Math.min(190, y))}`;
+  const insightGrade = viewMode === "All grades" ? "A*" : viewMode;
+  const insightRows = chronologicalRows.filter((row) => Number.isFinite(Number(boundaryMark(row, insightGrade))));
+  const insightValues = insightRows.map((row) => Number(boundaryMark(row, insightGrade)));
+  const latestRow = insightRows[insightRows.length - 1] || null;
+  const latestMark = latestRow ? Number(boundaryMark(latestRow, insightGrade)) : null;
+  const lowestMark = insightValues.length ? Math.min(...insightValues) : null;
+  const highestMark = insightValues.length ? Math.max(...insightValues) : null;
+  const predictedMark = predictions[insightGrade];
+  const overallTrend = trendFor(chronologicalRows, insightGrade);
+  const latestPercent = boundaryPercent(latestMark, latestRow?.max_mark);
+  const predictionMaxMark = chronologicalRows[chronologicalRows.length - 1]?.max_mark || latestRow?.max_mark || maxChartMark;
+
+  function predictionTooltipPayload(point) {
+    return {
+      x: point.x,
+      y: point.y,
+      guideX: point.x,
+      label: `${predictionLabel} (Predicted)`,
+      items: visibleGrades
+        .map((grade) => {
+          const mark = predictions[grade];
+          if (!Number.isFinite(mark)) return null;
+          return {
+            grade,
+            mark,
+            color: gradeColors[grade],
+            maxMark: predictionMaxMark,
+            percent: boundaryPercent(mark, predictionMaxMark),
+          };
+        })
+        .filter(Boolean),
+    };
+  }
+
+  function rowTooltipPayload(row, index) {
+    const items = visibleGrades
+      .map((grade) => {
+        const mark = Number(boundaryMark(row, grade));
+        if (!Number.isFinite(mark)) return null;
+        return {
+          grade,
+          mark,
+          color: gradeColors[grade],
+          maxMark: row.max_mark,
+          percent: boundaryPercent(mark, row.max_mark),
+        };
       })
-      .join(" "),
-  }));
-
-  const astarChange = data[2].astar - data[0].astar;
+      .filter(Boolean);
+    const yValues = visibleGrades
+      .map((grade) => chartPoint(row, index, grade)?.y)
+      .filter((value) => Number.isFinite(value));
+    const x = chartCoords(index, 0).x;
+    const y = yValues.length ? Math.min(...yValues) : chart.top;
+    return {
+      x,
+      y,
+      guideX: x,
+      label: boundarySessionLabel(row),
+      items,
+    };
+  }
 
   return (
-    <section className="rounded-3xl border border-white/10 bg-white/[0.035] p-6">
+    <section className="space-y-6">
+      <div className="rounded-3xl border border-white/10 bg-white/[0.035] p-6">
       <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h2 className="text-xl font-black text-white">Grade boundaries</h2>
-          <p className="mt-1 text-sm text-white/42">Static sample data by subject and board</p>
+          <p className="text-xs font-black uppercase tracking-[0.22em] text-cyan-200/80">Boundary analytics</p>
+          <h2 className="mt-2 text-3xl font-black text-white">Grade Boundaries</h2>
+          <p className="mt-1 text-sm text-white/42">Raw mark trends and next-session predictions.</p>
         </div>
-        <select
-          value={selectedKey}
-          onChange={(event) => setSelectedKey(event.target.value)}
-          className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-sm font-bold text-white outline-none focus:border-cyan-300"
-        >
-          {subjectOptions.map((subject) => (
-            <option key={`${subject.board}-${subject.name}`} value={`${subject.board}|${subject.name}`}>
-              {subject.name} - {subject.board}
-            </option>
-          ))}
-        </select>
       </div>
-      <div className="h-[300px] rounded-2xl border border-white/10 bg-slate-950/45 p-4">
-        <svg viewBox="0 0 430 230" className="h-full w-full" role="img" aria-label="A star, A, and B grade boundary trend from 2023 to 2026 predicted">
-          <defs>
-            <linearGradient id="boundaryFade" x1="0" x2="1" y1="0" y2="0">
-              <stop offset="0%" stopColor="#22d3ee" stopOpacity="0.14" />
-              <stop offset="55%" stopColor="#a78bfa" stopOpacity="0.16" />
-              <stop offset="100%" stopColor="#fb7185" stopOpacity="0.12" />
-            </linearGradient>
-          </defs>
 
-          <rect x="38" y="22" width="360" height="170" rx="18" fill="url(#boundaryFade)" />
-          {[56, 92, 128, 164].map((y) => (
-            <line key={y} x1="50" y1={y} x2="390" y2={y} stroke="rgba(255,255,255,0.10)" strokeDasharray="4 6" />
-          ))}
-          <line x1="50" y1="192" x2="390" y2="192" stroke="rgba(255,255,255,0.24)" />
-          <line x1="50" y1="32" x2="50" y2="192" stroke="rgba(255,255,255,0.24)" />
+      {selectedSubjects.length === 0 ? (
+        <div className="rounded-2xl border border-white/10 bg-slate-950/45 p-5 text-sm font-bold text-white/50">
+          Choose your subjects first to view grade boundaries.
+        </div>
+      ) : (
+        <>
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <select value={selectedSubjectId} onChange={(event) => setSelectedSubjectId(event.target.value)} className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-sm font-bold text-white outline-none focus:border-cyan-300">
+              {selectedSubjects.map((subject) => (
+                <option key={subject.id} value={subject.id}>{subject.name}</option>
+              ))}
+            </select>
+            <select value={selectedBoard} onChange={(event) => setSelectedBoard(event.target.value)} className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-sm font-bold text-white outline-none focus:border-cyan-300">
+              {boardOptions.map((board) => <option key={board}>{board}</option>)}
+            </select>
+            <select value={selectedUnit} onChange={(event) => setSelectedUnit(event.target.value)} className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-sm font-bold text-white outline-none focus:border-cyan-300">
+              {unitOptions.length ? unitOptions.map((unit) => <option key={unit}>{unit}</option>) : <option value="">No units yet</option>}
+            </select>
+            <select value={viewMode} onChange={(event) => setViewMode(event.target.value)} className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-sm font-bold text-white outline-none focus:border-cyan-300">
+              <option>All grades</option>
+              {grades.map((grade) => <option key={grade}>{grade}</option>)}
+            </select>
+          </div>
 
-          {chartLines.map((line) => (
-            <g key={line.key}>
-              <polyline
-                points={line.points}
-                fill="none"
-                stroke={line.color}
-                strokeWidth="4"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-              {line.points.split(" ").map((point) => {
-                const [cx, cy] = point.split(",");
-                return <circle key={`${line.key}-${point}`} cx={cx} cy={cy} r="4.5" fill={line.color} />;
-              })}
-            </g>
-          ))}
+          {loadingBoundaries ? (
+            <div className="mt-5 rounded-2xl border border-white/10 bg-slate-950/45 p-6 text-sm font-bold text-white/50">
+              Loading grade boundaries...
+            </div>
+          ) : filteredRows.length === 0 ? (
+            <div className="mt-5 rounded-2xl border border-white/10 bg-slate-950/45 p-6">
+              <p className="text-lg font-black text-white">
+                {boundaryRows.length === 0
+                  ? "No grade boundary data found."
+                  : "No grade boundary data available yet for this subject/paper."}
+              </p>
+              <p className="mt-2 text-sm text-white/45">
+                {boundaryRows.length === 0
+                  ? "Add official files to public/grade-boundaries and run npm run build:boundaries."
+                  : "Once matching official boundaries are generated, this chart will show the last 5 seasons and next-season prediction."}
+              </p>
+              {boundaryError && <p className="mt-3 text-xs font-bold text-rose-200">{boundaryError}</p>}
+            </div>
+          ) : (
+            <>
+              <div
+                className="relative mx-auto mt-6 max-w-[760px] rounded-2xl border border-white/10 bg-slate-950/55 p-6 shadow-2xl shadow-black/20"
+                onMouseLeave={() => setBoundaryTooltip(null)}
+              >
+                <h3 className="mb-4 text-xl font-black text-white">Grade Boundaries</h3>
+                <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} className="h-[330px] w-full" role="img" aria-label="Raw mark grade boundary trend with prediction">
+                  {[0, 0.25, 0.5, 0.75, 1].map((tick) => {
+                    const y = chart.top + tick * plotHeight;
+                    const value = Math.round(maxChartMark - tick * (maxChartMark - minChartMark));
+                    return (
+                      <g key={tick}>
+                        <line x1={chart.left} y1={y} x2={chartWidth - chart.right} y2={y} stroke="rgba(255,255,255,0.10)" strokeDasharray="4 6" />
+                        <text x={chart.left - 10} y={y + 4} textAnchor="end" fill="rgba(255,255,255,0.45)" fontSize="11" fontWeight="700">{value}</text>
+                      </g>
+                    );
+                  })}
+                  <line x1={chart.left} y1={chart.top} x2={chart.left} y2={chart.top + plotHeight} stroke="rgba(255,255,255,0.20)" />
+                  <line x1={chart.left} y1={chart.top + plotHeight} x2={chartWidth - chart.right} y2={chart.top + plotHeight} stroke="rgba(255,255,255,0.20)" />
 
-          {["2023", "2024", "2025", "2026 predicted"].map((year, index) => (
-            <text key={year} x={50 + index * 110} y="214" textAnchor="middle" fill="rgba(255,255,255,0.48)" fontSize="12" fontWeight="700">
-              {year}
-            </text>
-          ))}
-          {["94%", "77%", "62%", "47%"].map((label, index) => (
-            <text key={label} x="38" y={58 + index * 36} textAnchor="end" fill="rgba(255,255,255,0.42)" fontSize="11" fontWeight="700">
-              {label}
-            </text>
-          ))}
-        </svg>
+                  {boundaryTooltip?.guideX && (
+                    <line
+                      x1={boundaryTooltip.guideX}
+                      y1={chart.top}
+                      x2={boundaryTooltip.guideX}
+                      y2={chart.top + plotHeight}
+                      stroke="rgba(255,255,255,0.20)"
+                      strokeDasharray="4 6"
+                    />
+                  )}
+
+                  {chartLines.map((line) => (
+                    <g key={line.grade}>
+                      <polyline points={line.points.map((point) => `${point.x},${point.y}`).join(" ")} fill="none" stroke={line.color} strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
+                      {line.points.length > 0 && line.prediction && (
+                        <line
+                          x1={line.points[line.points.length - 1].x}
+                          y1={line.points[line.points.length - 1].y}
+                          x2={line.prediction.x}
+                          y2={line.prediction.y}
+                          stroke={line.color}
+                          strokeWidth="3"
+                          strokeDasharray="7 7"
+                          strokeLinecap="round"
+                        />
+                      )}
+                      {line.points.map((point) => {
+                        const percent = boundaryPercent(point.mark, point.row?.max_mark);
+                        const isActive = boundaryTooltip?.label === boundarySessionLabel(point.row);
+                        return (
+                          <circle
+                            key={`${line.grade}-${point.x}-${point.y}`}
+                            cx={point.x}
+                            cy={point.y}
+                            r={isActive ? "7" : "5"}
+                            fill={line.color}
+                            stroke={isActive ? "rgba(255,255,255,0.85)" : "transparent"}
+                            strokeWidth={isActive ? "2" : "0"}
+                            className="cursor-pointer"
+                            onMouseEnter={() => setBoundaryTooltip(rowTooltipPayload(point.row, chronologicalRows.indexOf(point.row)))}
+                            onFocus={() => setBoundaryTooltip(rowTooltipPayload(point.row, chronologicalRows.indexOf(point.row)))}
+                            onClick={() => setBoundaryTooltip(rowTooltipPayload(point.row, chronologicalRows.indexOf(point.row)))}
+                          >
+                            <title>{`${boundarySessionLabel(point.row)}\n${line.grade}: ${point.mark}/${point.row?.max_mark} - ${percent?.toFixed(1)}%`}</title>
+                          </circle>
+                        );
+                      })}
+                      {line.prediction && (
+                        <circle
+                          cx={line.prediction.x}
+                          cy={line.prediction.y}
+                          r="6"
+                          fill={line.color}
+                          stroke="rgba(255,255,255,0.8)"
+                          strokeWidth="2"
+                          className="cursor-pointer"
+                          onMouseEnter={() => setBoundaryTooltip(predictionTooltipPayload(line.prediction))}
+                          onFocus={() => setBoundaryTooltip(predictionTooltipPayload(line.prediction))}
+                          onClick={() => setBoundaryTooltip(predictionTooltipPayload(line.prediction))}
+                        >
+                          <title>{`${predictionLabel}\nPredicted ${line.grade}: ${line.prediction.mark}`}</title>
+                        </circle>
+                      )}
+                    </g>
+                  ))}
+
+                  {chronologicalRows.map((row, index) => {
+                    const x = chartCoords(index, 0).x;
+                    return <text key={`${row.session}-${index}`} x={x} y={chartHeight - 16} textAnchor="middle" fill="rgba(255,255,255,0.45)" fontSize="11" fontWeight="700">{boundarySessionLabel(row)}</text>;
+                  })}
+                  {chronologicalRows.length > 0 && (
+                    <text x={chartCoords(chronologicalRows.length, 0).x} y={chartHeight - 16} textAnchor="middle" fill="rgba(34,211,238,0.75)" fontSize="11" fontWeight="800">{predictionLabel}</text>
+                  )}
+
+                  {chronologicalRows.map((row, index) => {
+                    const x = chartCoords(index, 0).x;
+                    const previousX = index === 0 ? chart.left : chartCoords(index - 1, 0).x;
+                    const nextX = index === chronologicalRows.length - 1 ? chartCoords(chronologicalRows.length, 0).x : chartCoords(index + 1, 0).x;
+                    const width = Math.max(26, (nextX - previousX) / 2);
+                    return (
+                      <rect
+                        key={`hover-${row.session}-${index}`}
+                        x={x - width / 2}
+                        y={chart.top}
+                        width={width}
+                        height={plotHeight}
+                        fill="transparent"
+                        className="cursor-crosshair"
+                        onMouseEnter={() => setBoundaryTooltip(rowTooltipPayload(row, index))}
+                        onMouseMove={() => setBoundaryTooltip(rowTooltipPayload(row, index))}
+                        onClick={() => setBoundaryTooltip(rowTooltipPayload(row, index))}
+                      />
+                    );
+                  })}
+                  {chronologicalRows.length > 0 && (
+                    <rect
+                      x={chartCoords(chronologicalRows.length, 0).x - 28}
+                      y={chart.top}
+                      width="56"
+                      height={plotHeight}
+                      fill="transparent"
+                      className="cursor-crosshair"
+                      onMouseEnter={() => {
+                        const firstPrediction = chartLines.find((line) => line.prediction)?.prediction;
+                        if (firstPrediction) setBoundaryTooltip(predictionTooltipPayload(firstPrediction));
+                      }}
+                      onMouseMove={() => {
+                        const firstPrediction = chartLines.find((line) => line.prediction)?.prediction;
+                        if (firstPrediction) setBoundaryTooltip(predictionTooltipPayload(firstPrediction));
+                      }}
+                      onClick={() => {
+                        const firstPrediction = chartLines.find((line) => line.prediction)?.prediction;
+                        if (firstPrediction) setBoundaryTooltip(predictionTooltipPayload(firstPrediction));
+                      }}
+                    />
+                  )}
+                </svg>
+
+                {boundaryTooltip && (
+                  <div
+                    className="pointer-events-none absolute z-[9999] min-w-[210px] rounded-xl border border-white/10 bg-slate-950/95 p-3 text-xs shadow-2xl shadow-black/30 backdrop-blur"
+                    style={{
+                      left: `${Math.min(78, Math.max(12, (boundaryTooltip.x / chartWidth) * 100))}%`,
+                      top: `${Math.min(72, Math.max(14, (boundaryTooltip.y / chartHeight) * 100))}%`,
+                    }}
+                  >
+                    <p className="font-black text-white">{boundaryTooltip.label}</p>
+                    <div className="mt-2 space-y-1.5">
+                      {boundaryTooltip.items.map((item) => (
+                        <p key={item.grade} className="flex items-center gap-2 font-bold text-white/72">
+                          <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: item.color }} />
+                          <span>{item.grade}: {item.mark}/{item.maxMark} - {item.percent?.toFixed(1)}%</span>
+                        </p>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="mt-3 flex flex-wrap justify-center gap-4 text-sm font-bold text-white/55">
+                  {chartLines.map((line) => (
+                    <span key={line.grade} className="inline-flex items-center gap-2">
+                      <span className="h-3 w-3 rounded-full" style={{ backgroundColor: line.color }} />
+                      {line.grade}
+                    </span>
+                  ))}
+                </div>
+                <p className="mt-4 text-center text-xs font-bold text-white/38">
+                  Next values are predicted using linear trend analysis from the latest available boundaries.
+                </p>
+              </div>
+
+              <div className="mx-auto mt-5 grid max-w-[760px] gap-3 md:grid-cols-2 xl:grid-cols-5">
+                <MetricCard label="Latest boundary" value={latestMark ?? "-"} detail={latestRow ? `${boundarySessionLabel(latestRow)}${latestPercent ? ` - ${latestPercent.toFixed(1)}%` : ""}` : "No data"} />
+                <MetricCard label="Lowest last 5" value={lowestMark ?? "-"} detail={insightGrade} accent="text-emerald-200" />
+                <MetricCard label="Highest last 5" value={highestMark ?? "-"} detail={insightGrade} accent="text-rose-200" />
+                <MetricCard label="Predicted next" value={predictedMark ?? "-"} detail={`${predictionLabel} ${insightGrade}`} accent="text-cyan-200" />
+                <MetricCard label="Trend" value={overallTrend} detail={`${insightGrade} boundary`} accent="text-violet-200" />
+              </div>
+
+              <div className="mx-auto mt-5 max-w-[920px] overflow-x-auto rounded-2xl border border-white/10 bg-slate-950/35">
+                <table className="min-w-full divide-y divide-white/10 text-left text-sm">
+                  <thead className="bg-white/[0.035] text-xs uppercase tracking-[0.16em] text-white/45">
+                    <tr>
+                      <th className="px-4 py-3">Session</th>
+                      <th className="px-4 py-3">Max mark</th>
+                      {grades.map((grade) => <th key={grade} className="px-4 py-3">{grade}</th>)}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/10 bg-slate-950/25">
+                    {recentRows.map((row, index) => (
+                      <tr key={`${row.board}-${row.subject}-${row.unit}-${row.session}-${index}`}>
+                        <td className="px-4 py-3 font-black text-white">{boundarySessionLabel(row)}</td>
+                        <td className="px-4 py-3 font-bold text-white/65">{row.max_mark}</td>
+                        {grades.map((grade) => {
+                          const mark = row.boundaries?.[grade];
+                          const percent = boundaryPercent(mark, row.max_mark);
+                          return (
+                            <td key={grade} className="px-4 py-3">
+                              {mark === undefined || mark === null || mark === "" ? (
+                                <span className="text-white/25">-</span>
+                              ) : (
+                                <span className="block font-black text-white">{mark}<span className="block text-xs font-bold text-white/38">{percent?.toFixed(1)}%</span></span>
+                              )}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+        </>
+      )}
       </div>
-      <div className="mt-4 flex flex-wrap gap-4 text-sm font-bold text-white/55">
-        {chartLines.map((line) => (
-          <span key={line.key} className="inline-flex items-center gap-2">
-            <span className="h-3 w-3 rounded-full" style={{ backgroundColor: line.color }} />
-            {line.label}
-          </span>
-        ))}
-      </div>
-      <p className="mt-4 rounded-2xl border border-cyan-300/15 bg-cyan-300/10 p-4 text-sm font-bold leading-6 text-cyan-50/80">
-        A* boundary increased by {astarChange} marks from 2023 to 2025 for {subjectName || "this subject"}.
-      </p>
     </section>
   );
 }
