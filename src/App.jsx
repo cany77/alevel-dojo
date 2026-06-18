@@ -163,7 +163,7 @@ function LegalModal({ type, onClose }) {
           {isPrivacy ? (
             <>
               <p>This placeholder privacy policy explains how A-Level Dojo will handle account and study data while the full legal policy is being prepared.</p>
-              <p>We use your email for authentication, selected subjects for personalization, and progress data to power dashboard features. We do not sell student data.</p>
+              <p>We use your email for authentication, selected subjects for personalization, and progress data to power Home features. We do not sell student data.</p>
               <p>When paid features launch, this policy should be replaced with a complete version covering payments, analytics, retention, and support requests.</p>
             </>
           ) : (
@@ -881,7 +881,7 @@ function DashboardOverview() {
         <div className="flex flex-wrap items-start justify-between gap-5">
           <div>
             <p className="mb-3 text-sm font-black uppercase tracking-[0.25em] text-rose-200">
-              Dashboard
+              Home
             </p>
 
             <h2 className="max-w-3xl text-4xl font-black tracking-tight text-white md:text-5xl">
@@ -890,7 +890,7 @@ function DashboardOverview() {
 
             <p className="mt-4 max-w-2xl text-slate-400">
               Pick your A-Level subjects from OxfordAQA, Cambridge, and Edexcel.
-              Your dashboard will then show the papers, notes, syllabus, flashcards,
+              Home will then show the papers, notes, syllabus, flashcards,
               and AI tools for only those subjects.
             </p>
           </div>
@@ -1398,7 +1398,7 @@ if (page === "library") {
   <p className="text-sm font-black uppercase tracking-[0.2em] text-rose-200">
     Home
   </p>
-  <h3 className="mt-2 text-xl font-black text-white">My dashboard</h3>
+  <h3 className="mt-2 text-xl font-black text-white">My Home</h3>
   <p className="mt-2 text-sm text-slate-400">
     Choose subjects and see your revision overview.
   </p>

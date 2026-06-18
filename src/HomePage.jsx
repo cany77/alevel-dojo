@@ -160,7 +160,7 @@ function HomePageUpgradePreview({
     [Layers3, "Flashcards", "Create your own flashcards or revise from pre-made decks matched to the syllabus."],
     [Brain, "AI Study Partner", "Ask questions, go through papers, get quizzed, visualize topics, and combine topics into one revision session."],
     [Timer, "Timed Mock Mode", "Practise under timed exam conditions with extra time options and progress tracking."],
-    [CheckCircle2, "Progress Dashboard", "Track completed papers, saved papers, weak topics, and subject progress in a personal dashboard."],
+    [CheckCircle2, "Progress Home", "Track completed papers, saved papers, weak topics, and subject progress in your personal Home."],
   ];
 
   return (
@@ -187,7 +187,7 @@ function HomePageUpgradePreview({
           <div className="hidden items-center gap-3 md:flex">
             {loggedIn ? (
               <>
-                <button onClick={onBrowsePapers} className="rounded-2xl bg-gradient-to-r from-rose-400 to-violet-500 px-5 py-3 text-sm font-black text-white shadow-lg shadow-violet-500/20 transition-all duration-200 ease-out hover:-translate-y-0.5">Open dashboard</button>
+                <button onClick={onBrowsePapers} className="rounded-2xl bg-gradient-to-r from-rose-400 to-violet-500 px-5 py-3 text-sm font-black text-white shadow-lg shadow-violet-500/20 transition-all duration-200 ease-out hover:-translate-y-0.5">Open Home</button>
                 <button onClick={onLogout} className="rounded-2xl border border-white/15 px-5 py-3 text-sm font-bold text-white/75 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-white/5">Log out</button>
               </>
             ) : (
@@ -208,7 +208,7 @@ function HomePageUpgradePreview({
             <p className="mt-8 max-w-2xl text-xl leading-9 text-white/65">Every A-Level past paper from OxfordAQA, Cambridge, and Edexcel — with mark schemes, timed mocks, progress tracking, and revision tools in one clean place.</p>
             <div className="mt-10 flex flex-wrap gap-4">
               <button onClick={onBrowsePapers} className="rounded-2xl bg-gradient-to-r from-rose-400 to-violet-500 px-8 py-4 text-lg font-black text-white shadow-2xl shadow-rose-500/20 transition-all duration-200 ease-out hover:-translate-y-0.5">Browse papers</button>
-              <button onClick={loggedIn ? onBrowsePapers : onOpenAuth} className="rounded-2xl border border-white/20 px-8 py-4 text-lg font-black text-white/85 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-white/5">{loggedIn ? "Open dashboard" : "Create account"}</button>
+              <button onClick={loggedIn ? onBrowsePapers : onOpenAuth} className="rounded-2xl border border-white/20 px-8 py-4 text-lg font-black text-white/85 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-white/5">{loggedIn ? "Open Home" : "Create account"}</button>
             </div>
           </div>
 
@@ -311,7 +311,7 @@ function HomePageUpgradePreview({
             <div className="grid gap-0 lg:grid-cols-[0.95fr_1.05fr]">
               <div className="bg-slate-950/45 p-8"><p className="mb-4 flex items-center gap-2 text-sm font-black uppercase tracking-[0.2em] text-rose-200"><Zap size={18} />Sign in flow</p><h2 className="text-4xl font-black text-white">Clean login and locked tools.</h2><p className="mt-5 leading-8 text-white/55">If a student tries to preview, download, edit, or save without logging in, they see a polished sign-in-required popup.</p></div>
               <div className="p-8">
-                {loggedIn ? (<div><div className="mb-5 inline-flex rounded-2xl bg-emerald-400/15 p-4 text-emerald-200"><CheckCircle2 size={28} /></div><h3 className="text-3xl font-black text-white">You are signed in.</h3><p className="mt-4 leading-8 text-white/55">Your dashboard, selected subjects, saved papers, and revision tools are ready.</p><button onClick={onBrowsePapers} className="mt-6 rounded-2xl bg-gradient-to-r from-rose-400 to-violet-500 px-6 py-4 font-black text-white shadow-xl shadow-violet-500/20">Open dashboard</button></div>) : (<><div className="mb-5 grid grid-cols-2 rounded-2xl bg-white/[0.06] p-1"><button type="button" onClick={() => setAuthMode("signin")} className={`rounded-xl py-3 text-sm font-black ${authMode === "signin" ? "bg-[#ff554f] text-white" : "text-white/45"}`}>Sign in</button><button type="button" onClick={() => setAuthMode("signup")} className={`rounded-xl py-3 text-sm font-black ${authMode === "signup" ? "bg-[#ff554f] text-white" : "text-white/45"}`}>Sign up</button></div>{authMode === "signup" && (<input
+                {loggedIn ? (<div><div className="mb-5 inline-flex rounded-2xl bg-emerald-400/15 p-4 text-emerald-200"><CheckCircle2 size={28} /></div><h3 className="text-3xl font-black text-white">You are signed in.</h3><p className="mt-4 leading-8 text-white/55">Home, selected subjects, saved papers, and revision tools are ready.</p><button onClick={onBrowsePapers} className="mt-6 rounded-2xl bg-gradient-to-r from-rose-400 to-violet-500 px-6 py-4 font-black text-white shadow-xl shadow-violet-500/20">Open Home</button></div>) : (<><div className="mb-5 grid grid-cols-2 rounded-2xl bg-white/[0.06] p-1"><button type="button" onClick={() => setAuthMode("signin")} className={`rounded-xl py-3 text-sm font-black ${authMode === "signin" ? "bg-[#ff554f] text-white" : "text-white/45"}`}>Sign in</button><button type="button" onClick={() => setAuthMode("signup")} className={`rounded-xl py-3 text-sm font-black ${authMode === "signup" ? "bg-[#ff554f] text-white" : "text-white/45"}`}>Sign up</button></div>{authMode === "signup" && (<input
   value={name}
   onChange={(e) => setName(e.target.value)}
   placeholder="Your name"
@@ -351,7 +351,7 @@ function HomePageUpgradePreview({
             <div className="mt-4 grid gap-2 text-left text-sm text-white/45">
               <button onClick={onBrowsePapers} className="text-left hover:text-white">Past papers</button>
               <button onClick={onBrowsePapers} className="text-left hover:text-white">Topic tests</button>
-              <button onClick={loggedIn ? onGoDashboard : onOpenAuth} className="text-left hover:text-white">Dashboard</button>
+              <button onClick={loggedIn ? onGoDashboard : onOpenAuth} className="text-left hover:text-white">Home</button>
               <button onClick={onOpenPricing} className="text-left hover:text-white">Pricing</button>
             </div>
           </div>

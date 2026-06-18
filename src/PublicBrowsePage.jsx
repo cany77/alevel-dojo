@@ -57,6 +57,18 @@ const subjects = [
     board: "Edexcel",
     description: "Kinematics, forces, moments, projectiles, work, energy, and momentum resources for exam practice.",
   },
+  {
+    id: "decisions",
+    name: "Decisions",
+    board: "Edexcel",
+    description: "Decision mathematics papers covering algorithms, networks, critical path analysis, and linear programming.",
+  },
+  {
+    id: "economics",
+    name: "Economics",
+    board: "Edexcel",
+    description: "IAL economics papers for markets, business behaviour, macroeconomics, and the global economy.",
+  },
 ];
 
 const boards = ["All", "OxfordAQA", "Cambridge", "Edexcel"];

@@ -1,6 +1,7 @@
 import { papers } from "./papersData";
 import { examDates } from "./data/examDates";
 import { gradeBoundaries as generatedGradeBoundaries } from "./data/gradeBoundaries.generated";
+import { umsBoundaries } from "./data/umsBoundaries";
 import { supabase } from "./supabaseClient";
 import PdfViewer from "./PdfViewer";
 import Watermark from "./Watermark";
@@ -76,6 +77,8 @@ const subjectGroups = [
       { id: "further-maths", name: "Further Mathematics", detail: "Further pure, mechanics, statistics" },
       { id: "statistics", name: "Statistics", detail: "Probability, distributions, hypothesis testing" },
       { id: "mechanics", name: "Mechanics", detail: "Kinematics, forces, moments, projectiles" },
+      { id: "decisions", name: "Decisions", detail: "Decision mathematics, algorithms, networks" },
+      { id: "economics", name: "Economics", detail: "Markets, macroeconomics, global economy" },
     ],
   },
 ];
@@ -291,6 +294,7 @@ function paperId(paper) {
     paper.board,
     paper.subject,
     paper.variant,
+    paper.componentCode,
     paper.qualification,
     paper.session,
     paper.year,
@@ -303,6 +307,36 @@ function paperId(paper) {
     .join("|");
 }
 
+function isPdfUrl(url = "") {
+  return String(url).toLowerCase().split("?")[0].endsWith(".pdf");
+}
+
+function isPdfPaper(paper) {
+  const url = paper?.questionPaper || paper?.questionUrl || paper?.pdf || "";
+  const type = String(paper?.questionFileType || paper?.fileType || "").toLowerCase();
+  return type ? type === "pdf" : isPdfUrl(url);
+}
+
+function openPaperFile(paper) {
+  const url = paper?.questionPaper || paper?.questionUrl || paper?.pdf || paper?.markScheme || paper?.markSchemeUrl;
+  if (url) window.open(url, "_blank");
+}
+
+function DocumentFrame({ url, title = "Document" }) {
+  if (!url) return null;
+  if (isPdfUrl(url)) {
+    return <PdfViewer fileUrl={url} editable={false} />;
+  }
+
+  return (
+    <iframe
+      title={title}
+      src={url}
+      className="min-h-[70vh] w-full rounded-2xl border border-white/10 bg-white"
+    />
+  );
+}
+
 function paperLabel(paper) {
   if (paper.type === "Topic Test") {
     return `${paper.subject} • ${paper.topic}`;
@@ -312,6 +346,17 @@ function paperLabel(paper) {
     paper.session || ""
   } ${paper.year || ""} • ${paper.unit || ""}`;
 }
+function paperSessionLabel(paper = {}) {
+  const session = String(paper.session || "").trim();
+  const year = paper.year ? String(paper.year) : "";
+  if (!session) return year;
+  return year && !session.includes(year) ? `${session} ${year}` : session;
+}
+
+function paperCardTitle(paper = {}, fallback = "") {
+  return [paper.paper || paper.unit || fallback, paper.variant].filter(Boolean).join(" ");
+}
+
 function getPaperInsert(paper, subject = null, board = null) {
   const subjectName = String(
     paper?.subject || subject?.name || subject || ""
@@ -389,7 +434,11 @@ function sortPapersNewestFirst(papersList = []) {
   return [...papersList].sort((a, b) => {
     const yearDiff = Number(b.year || 0) - Number(a.year || 0);
     if (yearDiff !== 0) return yearDiff;
-    return sessionRank(b.session) - sessionRank(a.session);
+    const sessionDiff = sessionRank(b.session) - sessionRank(a.session);
+    if (sessionDiff !== 0) return sessionDiff;
+    const unitDiff = unitSortValue(a.unit) - unitSortValue(b.unit);
+    if (unitDiff !== 0) return unitDiff;
+    return String(a.variant || "").localeCompare(String(b.variant || ""), undefined, { numeric: true });
   });
 }
 
@@ -530,6 +579,17 @@ function getSubjectPapers(subject) {
   return papers.filter(
     (paper) =>
       paper.type === "Past Paper" &&
+      paper.board === subject.board &&
+      paper.subject === subject.name
+  );
+}
+
+function getSubjectTopicTests(subject) {
+  if (!subject) return [];
+
+  return papers.filter(
+    (paper) =>
+      paper.type === "Topic Test" &&
       paper.board === subject.board &&
       paper.subject === subject.name
   );
@@ -734,7 +794,7 @@ function Logo({ onGoHome = () => {} }) {
       </div>
       <div className="min-w-0">
         <p className="whitespace-nowrap text-base font-black tracking-tight text-white">A-Level Dojo</p>
-        <p className="-mt-1 text-[11px] text-white/40">dashboard preview</p>
+        <p className="-mt-1 text-[11px] text-white/40">home preview</p>
       </div>
     </button>
   );
@@ -812,6 +872,137 @@ function SubjectSetupModal({ open, onClose, selectedIds, onToggle }) {
               className="rounded-xl bg-[#ff554f] px-5 py-3 text-sm font-black text-white shadow-lg shadow-red-500/20 hover:brightness-110"
             >
               Save subjects
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ChangeSubjectsModal({
+  open,
+  selectedIds = [],
+  onClose = () => {},
+  onSave = async () => {},
+}) {
+  const [draftIds, setDraftIds] = useState(selectedIds);
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      setDraftIds(selectedIds);
+      setError("");
+      setSaving(false);
+    }
+  }, [open, selectedIds]);
+
+  if (!open) return null;
+
+  function toggleSubject(subjectId) {
+    setError("");
+    setDraftIds((current) =>
+      current.includes(subjectId)
+        ? current.filter((id) => id !== subjectId)
+        : [...current, subjectId]
+    );
+  }
+
+  async function saveSubjects() {
+    if (draftIds.length === 0) {
+      setError("Choose at least one subject.");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      await onSave(draftIds);
+      onClose();
+    } catch (saveError) {
+      console.error(saveError);
+      setError("Could not save subjects. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 px-4 py-6 backdrop-blur-md">
+      <div className="flex max-h-[88vh] w-full max-w-3xl flex-col overflow-hidden rounded-3xl border border-white/15 bg-[#080b18]/95 text-white shadow-2xl shadow-black/40">
+        <div className="flex items-start justify-between gap-4 border-b border-white/10 px-6 py-5">
+          <div>
+            <h2 className="text-2xl font-black tracking-tight">Change subjects</h2>
+            <p className="mt-1 text-sm leading-6 text-white/48">
+              Choose the subjects you want to show on your dashboard.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04] text-white/55 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-white/[0.08] hover:text-white"
+            aria-label="Close subject selector"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="scrollbar-hidden overflow-y-auto px-6 py-5">
+          <div className="space-y-6">
+            {subjectGroups.map((group) => (
+              <section key={group.board} className="rounded-3xl border border-white/10 bg-white/[0.03] p-4">
+                <div className="mb-3">
+                  <h3 className="text-lg font-black text-white">{group.board}</h3>
+                  <p className="mt-1 text-sm text-white/38">{group.description}</p>
+                </div>
+
+                <div className="flex flex-wrap gap-2.5">
+                  {group.subjects.map((subject) => {
+                    const selected = draftIds.includes(subject.id);
+                    return (
+                      <button
+                        type="button"
+                        key={subject.id}
+                        onClick={() => toggleSubject(subject.id)}
+                        className={`rounded-full border px-4 py-2 text-sm font-black transition-all duration-200 ease-out hover:-translate-y-0.5 ${
+                          selected
+                            ? "border-cyan-300/40 bg-cyan-300/10 text-cyan-100 shadow-[0_0_18px_rgba(34,211,238,0.10)]"
+                            : "border-white/10 bg-white/[0.035] text-white/55 hover:bg-white/[0.06] hover:text-white"
+                        }`}
+                      >
+                        {selected && <Check className="mr-1 inline-block" size={14} />}
+                        {subject.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+            ))}
+          </div>
+        </div>
+
+        <div className="border-t border-white/10 px-6 py-5">
+          {error && (
+            <p className="mb-3 rounded-2xl border border-rose-300/20 bg-rose-400/10 px-4 py-3 text-sm font-bold text-rose-100">
+              {error}
+            </p>
+          )}
+          <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-end">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={saving}
+              className="rounded-2xl border border-white/10 bg-white/[0.04] px-5 py-3 text-sm font-black text-white/65 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-white/[0.08] hover:text-white disabled:cursor-not-allowed disabled:opacity-55"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={saveSubjects}
+              disabled={saving}
+              className="rounded-2xl bg-cyan-300 px-5 py-3 text-sm font-black text-slate-950 shadow-[0_0_24px_rgba(34,211,238,0.18)] transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-cyan-200 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {saving ? "Saving..." : "Save subjects"}
             </button>
           </div>
         </div>
@@ -899,7 +1090,7 @@ function EmptySubjectRequest({ onOpenModal }) {
         </div>
         <h2 className="text-3xl font-black tracking-tight text-white">Set up your subjects</h2>
         <p className="mt-3 text-sm leading-7 text-white/50">
-          Choose the subjects and exam boards you are actually taking. Your dashboard will stay simple and only show the papers, notes, syllabus, flashcards, and revision tools that match your choices.
+          Choose the subjects and exam boards you are actually taking. Home will stay simple and only show the papers, notes, syllabus, flashcards, and revision tools that match your choices.
         </p>
         <button
           onClick={onOpenModal}
@@ -998,7 +1189,7 @@ function DashboardShellSidebar({
 }) {
   const [subjectsOpen, setSubjectsOpen] = useState(true);
   const nav = [
-    [Home, "Dashboard", "dashboard"],
+    [Home, "Home", "dashboard"],
     [FileText, "Past papers", "pastpapers"],
     [Layers3, "Topic tests", "topictests"],
     [CalendarDays, "Exam calendar", "calendar"],
@@ -1390,6 +1581,7 @@ function DashboardHome({
   stats,
   upcomingExams,
   onSelectView,
+  onOpenSubjectPicker,
   onOpenPricing,
   greeting,
   needsCambridgeZone = false,
@@ -1409,7 +1601,8 @@ function DashboardHome({
             <p className="mt-1 text-sm text-white/42">Open a subject for papers and topic tests.</p>
           </div>
           <button
-            onClick={() => onSelectView("settings")}
+            type="button"
+            onClick={onOpenSubjectPicker}
             className="w-fit rounded-full border border-white/10 bg-white/[0.04] px-3.5 py-2 text-xs font-black text-cyan-100 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:border-cyan-300/30 hover:bg-cyan-300/10"
           >
             Change subjects
@@ -2060,6 +2253,9 @@ function GradeBoundariesPanel({ subjects = [] }) {
   const [selectedUnit, setSelectedUnit] = useState("");
   const [viewMode, setViewMode] = useState("All grades");
   const [boundaryTooltip, setBoundaryTooltip] = useState(null);
+  const [umsMode, setUmsMode] = useState("raw");
+  const [rawMarkInput, setRawMarkInput] = useState("");
+  const [umsMarkInput, setUmsMarkInput] = useState("");
 
   function loadGradeBoundaries() {
     setLoadingBoundaries(true);
@@ -2108,6 +2304,88 @@ function GradeBoundariesPanel({ subjects = [] }) {
 
   function boundaryMark(row, grade) {
     return row.boundaries?.[grade] ?? row[grade] ?? row[grade.toLowerCase()];
+  }
+
+  function clampNumber(value, min, max) {
+    return Math.max(min, Math.min(max, value));
+  }
+
+  function matchingUmsBoundary() {
+    if (!selectedSubject || !selectedUnit) return null;
+    return umsBoundaries.find(
+      (row) =>
+        boundaryBoardKey(row.board) === boundaryBoardKey(selectedBoard || selectedSubject.board) &&
+        boundarySubjectKey(row.subject) === boundarySubjectKey(selectedSubject.name) &&
+        boundarySubjectKey(row.unit || row.paper) === boundarySubjectKey(selectedUnit)
+    ) || null;
+  }
+
+  function gradeFromUms(umsValue, umsData) {
+    if (!umsData || !Number.isFinite(umsValue)) return { grade: "Not set", nextGrade: null, needed: null };
+    const ordered = grades
+      .map((grade) => ({ grade, mark: Number(umsData.umsBoundaries?.[grade]) }))
+      .filter((item) => Number.isFinite(item.mark))
+      .sort((a, b) => b.mark - a.mark);
+
+    const currentIndex = ordered.findIndex((item) => umsValue >= item.mark);
+    if (currentIndex === -1) {
+      const lowest = ordered[ordered.length - 1];
+      return { grade: "U", nextGrade: lowest?.grade || null, needed: lowest ? Math.max(0, lowest.mark - umsValue) : null };
+    }
+
+    const current = ordered[currentIndex];
+    const next = ordered[currentIndex - 1];
+    return {
+      grade: current.grade,
+      nextGrade: next?.grade || null,
+      needed: next ? Math.max(0, next.mark - umsValue) : null,
+    };
+  }
+
+  function exactRawToUms(rawMark, umsData) {
+    if (!umsData?.rawToUms) return null;
+    const roundedRaw = Math.round(Number(rawMark));
+    if (!Number.isFinite(roundedRaw)) return null;
+    const rawKeys = Object.keys(umsData.rawToUms)
+      .map(Number)
+      .filter(Number.isFinite)
+      .sort((a, b) => a - b);
+    if (!rawKeys.length) return null;
+    if (roundedRaw > rawKeys[rawKeys.length - 1]) return Number(umsData.maxUMS);
+    if (roundedRaw < rawKeys[0]) return Number(umsData.rawToUms[String(rawKeys[0])]);
+    const exact = umsData.rawToUms[String(roundedRaw)];
+    return Number.isFinite(Number(exact)) ? Number(exact) : null;
+  }
+
+  function minimumRawForUms(targetUms, umsData) {
+    if (!umsData?.rawToUms || !Number.isFinite(Number(targetUms))) return null;
+    const rows = Object.entries(umsData.rawToUms)
+      .map(([raw, ums]) => ({ raw: Number(raw), ums: Number(ums) }))
+      .filter((row) => Number.isFinite(row.raw) && Number.isFinite(row.ums) && row.ums >= Number(targetUms))
+      .sort((a, b) => a.raw - b.raw);
+    return rows[0]?.raw ?? null;
+  }
+
+  function gradeFromThreshold(rawValue, boundaryRow) {
+    if (!boundaryRow || !Number.isFinite(rawValue)) return { grade: "Not set", nextGrade: null, needed: null };
+    const ordered = grades
+      .map((grade) => ({ grade, mark: Number(boundaryMark(boundaryRow, grade)) }))
+      .filter((item) => Number.isFinite(item.mark))
+      .sort((a, b) => b.mark - a.mark);
+
+    const currentIndex = ordered.findIndex((item) => rawValue >= item.mark);
+    if (currentIndex === -1) {
+      const lowest = ordered[ordered.length - 1];
+      return { grade: "Below E", nextGrade: lowest?.grade || null, needed: lowest ? Math.max(0, lowest.mark - rawValue) : null };
+    }
+
+    const current = ordered[currentIndex];
+    const next = ordered[currentIndex - 1];
+    return {
+      grade: current.grade,
+      nextGrade: next?.grade || null,
+      needed: next ? Math.max(0, next.mark - rawValue) : null,
+    };
   }
 
   function nextSeasonLabel(rows) {
@@ -2210,7 +2488,7 @@ function GradeBoundariesPanel({ subjects = [] }) {
   const maxChartMark = Math.max(...chartMarks, ...predictionMarks, ...chronologicalRows.map((row) => Number(row.max_mark) || 0), 1);
   const minChartMark = Math.min(...chartMarks, 0);
   const chartWidth = 760;
-  const chartHeight = 330;
+  const chartHeight = 300;
   const chart = { left: 58, right: 44, top: 28, bottom: 58 };
   const plotWidth = chartWidth - chart.left - chart.right;
   const plotHeight = chartHeight - chart.top - chart.bottom;
@@ -2251,6 +2529,40 @@ function GradeBoundariesPanel({ subjects = [] }) {
   const overallTrend = trendFor(chronologicalRows, insightGrade);
   const latestPercent = boundaryPercent(latestMark, latestRow?.max_mark);
   const predictionMaxMark = chronologicalRows[chronologicalRows.length - 1]?.max_mark || latestRow?.max_mark || maxChartMark;
+  const selectedUmsBoundary = matchingUmsBoundary();
+  const isCambridgeBoundary = boundaryBoardKey(selectedBoard || selectedSubject?.board) === "cambridge";
+  const selectedThresholdBoundary = !selectedUmsBoundary && isCambridgeBoundary ? filteredRows[0] || null : null;
+  const rawMarkValue = Number(rawMarkInput);
+  const umsMarkValue = Number(umsMarkInput);
+  const hasRawMarkInput = rawMarkInput.trim() !== "" && Number.isFinite(rawMarkValue);
+  const hasUmsMarkInput = umsMarkInput.trim() !== "" && Number.isFinite(umsMarkValue);
+  const hasExactRawToUms = Boolean(selectedUmsBoundary?.rawToUms && Object.keys(selectedUmsBoundary.rawToUms).length);
+  const estimatedUms = selectedUmsBoundary && hasRawMarkInput && hasExactRawToUms
+    ? exactRawToUms(rawMarkValue, selectedUmsBoundary)
+    : null;
+  const activeUmsValue = umsMode === "raw"
+    ? estimatedUms
+    : selectedUmsBoundary && hasUmsMarkInput
+      ? clampNumber(Math.round(umsMarkValue), 0, selectedUmsBoundary.maxUMS)
+      : null;
+  const umsResult = selectedUmsBoundary && Number.isFinite(activeUmsValue)
+    ? gradeFromUms(activeUmsValue, selectedUmsBoundary)
+    : null;
+  const umsGrades = selectedUmsBoundary
+    ? grades.filter((grade) => Number.isFinite(Number(selectedUmsBoundary.umsBoundaries?.[grade])))
+    : [];
+  const nextUmsRawTarget = selectedUmsBoundary && umsResult?.nextGrade
+    ? minimumRawForUms(selectedUmsBoundary.umsBoundaries?.[umsResult.nextGrade], selectedUmsBoundary)
+    : null;
+  const enteredUmsRawTarget = selectedUmsBoundary && hasUmsMarkInput
+    ? minimumRawForUms(activeUmsValue, selectedUmsBoundary)
+    : null;
+  const activeThresholdValue = selectedThresholdBoundary && hasRawMarkInput
+    ? clampNumber(Math.round(rawMarkValue), 0, Number(selectedThresholdBoundary.max_mark) || 0)
+    : null;
+  const thresholdResult = selectedThresholdBoundary && Number.isFinite(activeThresholdValue)
+    ? gradeFromThreshold(activeThresholdValue, selectedThresholdBoundary)
+    : null;
 
   function predictionTooltipPayload(point) {
     return {
@@ -2303,12 +2615,12 @@ function GradeBoundariesPanel({ subjects = [] }) {
   }
 
   return (
-    <section className="space-y-6">
-      <div className="rounded-3xl border border-white/10 bg-white/[0.035] p-6">
-      <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
+    <section className="space-y-4">
+      <div className="rounded-3xl border border-white/10 bg-white/[0.035] p-4 lg:p-5">
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-4">
         <div>
           <p className="text-xs font-black uppercase tracking-[0.22em] text-cyan-200/80">Boundary analytics</p>
-          <h2 className="mt-2 text-3xl font-black text-white">Grade Boundaries</h2>
+          <h2 className="mt-1 text-2xl font-black text-white">Grade Boundaries</h2>
           <p className="mt-1 text-sm text-white/42">Raw mark trends and next-session predictions.</p>
         </div>
       </div>
@@ -2319,19 +2631,19 @@ function GradeBoundariesPanel({ subjects = [] }) {
         </div>
       ) : (
         <>
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-            <select value={selectedSubjectId} onChange={(event) => setSelectedSubjectId(event.target.value)} className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-sm font-bold text-white outline-none focus:border-cyan-300">
+          <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+            <select value={selectedSubjectId} onChange={(event) => setSelectedSubjectId(event.target.value)} className="rounded-2xl border border-white/10 bg-slate-950 px-3 py-2.5 text-sm font-bold text-white outline-none focus:border-cyan-300">
               {selectedSubjects.map((subject) => (
                 <option key={subject.id} value={subject.id}>{subject.name}</option>
               ))}
             </select>
-            <select value={selectedBoard} onChange={(event) => setSelectedBoard(event.target.value)} className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-sm font-bold text-white outline-none focus:border-cyan-300">
+            <select value={selectedBoard} onChange={(event) => setSelectedBoard(event.target.value)} className="rounded-2xl border border-white/10 bg-slate-950 px-3 py-2.5 text-sm font-bold text-white outline-none focus:border-cyan-300">
               {boardOptions.map((board) => <option key={board}>{board}</option>)}
             </select>
-            <select value={selectedUnit} onChange={(event) => setSelectedUnit(event.target.value)} className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-sm font-bold text-white outline-none focus:border-cyan-300">
+            <select value={selectedUnit} onChange={(event) => setSelectedUnit(event.target.value)} className="rounded-2xl border border-white/10 bg-slate-950 px-3 py-2.5 text-sm font-bold text-white outline-none focus:border-cyan-300">
               {unitOptions.length ? unitOptions.map((unit) => <option key={unit}>{unit}</option>) : <option value="">No units yet</option>}
             </select>
-            <select value={viewMode} onChange={(event) => setViewMode(event.target.value)} className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-sm font-bold text-white outline-none focus:border-cyan-300">
+            <select value={viewMode} onChange={(event) => setViewMode(event.target.value)} className="rounded-2xl border border-white/10 bg-slate-950 px-3 py-2.5 text-sm font-bold text-white outline-none focus:border-cyan-300">
               <option>All grades</option>
               {grades.map((grade) => <option key={grade}>{grade}</option>)}
             </select>
@@ -2357,12 +2669,14 @@ function GradeBoundariesPanel({ subjects = [] }) {
             </div>
           ) : (
             <>
+              <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px] xl:items-start">
+              <div className="space-y-3">
               <div
-                className="relative mx-auto mt-6 max-w-[760px] rounded-2xl border border-white/10 bg-slate-950/55 p-6 shadow-2xl shadow-black/20"
+                className="relative rounded-2xl border border-white/10 bg-slate-950/55 p-4 shadow-2xl shadow-black/20"
                 onMouseLeave={() => setBoundaryTooltip(null)}
               >
-                <h3 className="mb-4 text-xl font-black text-white">Grade Boundaries</h3>
-                <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} className="h-[330px] w-full" role="img" aria-label="Raw mark grade boundary trend with prediction">
+                <h3 className="mb-2 text-lg font-black text-white">Grade Boundaries</h3>
+                <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} className="h-[270px] w-full xl:h-[300px]" role="img" aria-label="Raw mark grade boundary trend with prediction">
                   {[0, 0.25, 0.5, 0.75, 1].map((tick) => {
                     const y = chart.top + tick * plotHeight;
                     const value = Math.round(maxChartMark - tick * (maxChartMark - minChartMark));
@@ -2514,7 +2828,7 @@ function GradeBoundariesPanel({ subjects = [] }) {
                   </div>
                 )}
 
-                <div className="mt-3 flex flex-wrap justify-center gap-4 text-sm font-bold text-white/55">
+                <div className="mt-2 flex flex-wrap justify-center gap-3 text-xs font-bold text-white/55">
                   {chartLines.map((line) => (
                     <span key={line.grade} className="inline-flex items-center gap-2">
                       <span className="h-3 w-3 rounded-full" style={{ backgroundColor: line.color }} />
@@ -2522,51 +2836,210 @@ function GradeBoundariesPanel({ subjects = [] }) {
                     </span>
                   ))}
                 </div>
-                <p className="mt-4 text-center text-xs font-bold text-white/38">
+                <p className="mt-2 text-center text-xs font-bold text-white/38">
                   Next values are predicted using linear trend analysis from the latest available boundaries.
                 </p>
               </div>
 
-              <div className="mx-auto mt-5 grid max-w-[760px] gap-3 md:grid-cols-2 xl:grid-cols-5">
-                <MetricCard label="Latest boundary" value={latestMark ?? "-"} detail={latestRow ? `${boundarySessionLabel(latestRow)}${latestPercent ? ` - ${latestPercent.toFixed(1)}%` : ""}` : "No data"} />
-                <MetricCard label="Lowest last 5" value={lowestMark ?? "-"} detail={insightGrade} accent="text-emerald-200" />
-                <MetricCard label="Highest last 5" value={highestMark ?? "-"} detail={insightGrade} accent="text-rose-200" />
-                <MetricCard label="Predicted next" value={predictedMark ?? "-"} detail={`${predictionLabel} ${insightGrade}`} accent="text-cyan-200" />
-                <MetricCard label="Trend" value={overallTrend} detail={`${insightGrade} boundary`} accent="text-violet-200" />
+              <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+                <MetricCard label="Latest" value={latestMark ?? "-"} detail={latestRow ? `${boundarySessionLabel(latestRow)}${latestPercent ? ` - ${latestPercent.toFixed(1)}%` : ""}` : "No data"} />
+                <MetricCard label="Lowest" value={lowestMark ?? "-"} detail={insightGrade} accent="text-emerald-200" />
+                <MetricCard label="Highest" value={highestMark ?? "-"} detail={insightGrade} accent="text-rose-200" />
+                <MetricCard label="Predicted" value={predictedMark ?? "-"} detail={`${predictionLabel} ${insightGrade}`} accent="text-cyan-200" />
+                <MetricCard label="Trend" value={overallTrend} detail={insightGrade} accent="text-violet-200" />
+              </div>
               </div>
 
-              <div className="mx-auto mt-5 max-w-[920px] overflow-x-auto rounded-2xl border border-white/10 bg-slate-950/35">
-                <table className="min-w-full divide-y divide-white/10 text-left text-sm">
-                  <thead className="bg-white/[0.035] text-xs uppercase tracking-[0.16em] text-white/45">
-                    <tr>
-                      <th className="px-4 py-3">Session</th>
-                      <th className="px-4 py-3">Max mark</th>
-                      {grades.map((grade) => <th key={grade} className="px-4 py-3">{grade}</th>)}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-white/10 bg-slate-950/25">
-                    {recentRows.map((row, index) => (
-                      <tr key={`${row.board}-${row.subject}-${row.unit}-${row.session}-${index}`}>
-                        <td className="px-4 py-3 font-black text-white">{boundarySessionLabel(row)}</td>
-                        <td className="px-4 py-3 font-bold text-white/65">{row.max_mark}</td>
-                        {grades.map((grade) => {
-                          const mark = row.boundaries?.[grade];
-                          const percent = boundaryPercent(mark, row.max_mark);
-                          return (
-                            <td key={grade} className="px-4 py-3">
-                              {mark === undefined || mark === null || mark === "" ? (
-                                <span className="text-white/25">-</span>
-                              ) : (
-                                <span className="block font-black text-white">{mark}<span className="block text-xs font-bold text-white/38">{percent?.toFixed(1)}%</span></span>
-                              )}
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <aside className="rounded-2xl border border-white/10 bg-slate-950/55 p-4 shadow-2xl shadow-black/20">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h3 className="text-lg font-black text-white">
+                      {selectedUmsBoundary ? `${selectedUmsBoundary.board} UMS Calculator` : selectedThresholdBoundary ? "Threshold Calculator" : "Conversion Calculator"}
+                    </h3>
+                    <p className="mt-1 text-xs font-bold text-white/40">
+                      {selectedSubject?.name || "Subject"} · {selectedBoard || selectedSubject?.board || "Board"} · {selectedUnit || "Paper"}
+                    </p>
+                  </div>
+                  <Calculator size={20} className="text-cyan-200/70" />
+                </div>
+
+                {!selectedUmsBoundary && !selectedThresholdBoundary ? (
+                  <div className="mt-5 rounded-2xl border border-white/10 bg-white/[0.035] p-4 text-sm font-bold leading-6 text-white/48">
+                    No conversion data available yet for this paper.
+                  </div>
+                ) : selectedThresholdBoundary ? (
+                  <div className="mt-5 space-y-4">
+                    <label className="block">
+                      <span className="text-xs font-black uppercase tracking-[0.16em] text-white/38">Raw mark</span>
+                      <input
+                        type="number"
+                        min="0"
+                        max={selectedThresholdBoundary.max_mark}
+                        value={rawMarkInput}
+                        onChange={(event) => setRawMarkInput(event.target.value)}
+                        placeholder={`0-${selectedThresholdBoundary.max_mark}`}
+                        className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-sm font-bold text-white outline-none placeholder:text-white/25 focus:border-cyan-300"
+                      />
+                    </label>
+
+                    <div className="rounded-2xl border border-cyan-300/15 bg-cyan-300/10 p-4">
+                      <p className="text-xs font-black uppercase tracking-[0.16em] text-cyan-100/70">Result</p>
+                      <div className="mt-2 flex items-end justify-between gap-3">
+                        <div>
+                          <p className="text-2xl font-black text-white">{Number.isFinite(activeThresholdValue) ? activeThresholdValue : "-"}</p>
+                          <p className="text-xs font-bold text-white/45">Raw mark</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-2xl font-black text-cyan-100">{thresholdResult?.grade || "-"}</p>
+                          <p className="text-xs font-bold text-white/45">Grade</p>
+                        </div>
+                      </div>
+                      <p className="mt-3 text-sm font-bold leading-6 text-white/62">
+                        {!thresholdResult
+                          ? "Enter a raw mark to estimate your Cambridge grade."
+                          : thresholdResult.nextGrade
+                            ? `Need ${thresholdResult.needed} more raw marks for ${thresholdResult.nextGrade}.`
+                            : "You are at the highest grade boundary."}
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 text-xs font-bold text-white/50">
+                      <span className="rounded-xl border border-white/10 bg-white/[0.035] px-3 py-2">Session: {boundarySessionLabel(selectedThresholdBoundary)}</span>
+                      <span className="rounded-xl border border-white/10 bg-white/[0.035] px-3 py-2">Max mark: {selectedThresholdBoundary.max_mark}</span>
+                    </div>
+
+                    <div className="overflow-hidden rounded-2xl border border-white/10">
+                      <table className="w-full text-left text-xs">
+                        <thead className="bg-white/[0.035] text-white/40">
+                          <tr>
+                            <th className="px-3 py-2">Grade</th>
+                            <th className="px-3 py-2">Raw mark needed</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-white/10">
+                          {grades.map((grade) => (
+                            <tr key={grade}>
+                              <td className="px-3 py-2 font-black text-white">{grade}</td>
+                              <td className="px-3 py-2 font-bold text-white/62">{boundaryMark(selectedThresholdBoundary, grade) ?? "-"}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mt-5 space-y-4">
+                    <p className="rounded-2xl border border-cyan-300/15 bg-cyan-300/10 p-3 text-xs font-bold leading-5 text-cyan-50/75">
+                      Uses the exact official raw mark to UMS conversion table.
+                    </p>
+                    <div className="grid grid-cols-2 gap-2 rounded-2xl border border-white/10 bg-white/[0.035] p-1">
+                      <button
+                        type="button"
+                        onClick={() => setUmsMode("raw")}
+                        className={`rounded-xl px-3 py-2 text-xs font-black transition-all duration-200 ease-out ${umsMode === "raw" ? "bg-cyan-300 text-slate-950" : "text-white/55 hover:bg-white/[0.06] hover:text-white"}`}
+                      >
+                        Raw → UMS
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setUmsMode("ums")}
+                        className={`rounded-xl px-3 py-2 text-xs font-black transition-all duration-200 ease-out ${umsMode === "ums" ? "bg-violet-300 text-slate-950" : "text-white/55 hover:bg-white/[0.06] hover:text-white"}`}
+                      >
+                        UMS → Grade
+                      </button>
+                    </div>
+
+                    {umsMode === "raw" ? (
+                      <label className="block">
+                        <span className="text-xs font-black uppercase tracking-[0.16em] text-white/38">Raw mark</span>
+                        <input
+                          type="number"
+                          min="0"
+                          max={selectedUmsBoundary.maxRaw}
+                          value={rawMarkInput}
+                          onChange={(event) => setRawMarkInput(event.target.value)}
+                          placeholder={`0-${selectedUmsBoundary.maxRaw}`}
+                          className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-sm font-bold text-white outline-none placeholder:text-white/25 focus:border-cyan-300"
+                        />
+                      </label>
+                    ) : (
+                      <label className="block">
+                        <span className="text-xs font-black uppercase tracking-[0.16em] text-white/38">UMS mark</span>
+                        <input
+                          type="number"
+                          min="0"
+                          max={selectedUmsBoundary.maxUMS}
+                          value={umsMarkInput}
+                          onChange={(event) => setUmsMarkInput(event.target.value)}
+                          placeholder={`0-${selectedUmsBoundary.maxUMS}`}
+                          className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-sm font-bold text-white outline-none placeholder:text-white/25 focus:border-cyan-300"
+                        />
+                      </label>
+                    )}
+
+                    {!hasExactRawToUms ? (
+                      <div className="rounded-2xl border border-amber-300/15 bg-amber-300/10 p-4 text-sm font-bold leading-6 text-amber-50/70">
+                        Exact UMS conversion data is not available for this unit.
+                      </div>
+                    ) : (
+                      <div className="rounded-2xl border border-cyan-300/15 bg-cyan-300/10 p-4">
+                        <p className="text-xs font-black uppercase tracking-[0.16em] text-cyan-100/70">Result</p>
+                        <div className="mt-2 grid grid-cols-3 gap-3">
+                          <div>
+                            <p className="text-2xl font-black text-white">
+                              {umsMode === "raw" && hasRawMarkInput ? `${Math.round(rawMarkValue)}/${selectedUmsBoundary.maxRaw}` : enteredUmsRawTarget ?? "-"}
+                            </p>
+                            <p className="text-xs font-bold text-white/45">{umsMode === "raw" ? "Raw mark" : "Minimum raw"}</p>
+                          </div>
+                          <div>
+                            <p className="text-2xl font-black text-white">{Number.isFinite(activeUmsValue) ? `${activeUmsValue}/${selectedUmsBoundary.maxUMS}` : "-"}</p>
+                            <p className="text-xs font-bold text-white/45">Exact UMS</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-2xl font-black text-cyan-100">{umsResult?.grade || "-"}</p>
+                            <p className="text-xs font-bold text-white/45">Grade</p>
+                          </div>
+                        </div>
+                        <p className="mt-3 text-sm font-bold leading-6 text-white/62">
+                          {!umsResult
+                            ? "Enter a mark to calculate your exact UMS and grade."
+                            : umsResult.nextGrade
+                              ? `Need ${umsResult.needed} more UMS for ${umsResult.nextGrade}.${nextUmsRawTarget !== null ? ` Minimum raw for ${umsResult.nextGrade}: ${nextUmsRawTarget}.` : ""}`
+                              : "You are at the highest grade boundary."}
+                        </p>
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-2 gap-2 text-xs font-bold text-white/50">
+                      <span className="rounded-xl border border-white/10 bg-white/[0.035] px-3 py-2">Max raw: {selectedUmsBoundary.maxRaw}</span>
+                      <span className="rounded-xl border border-white/10 bg-white/[0.035] px-3 py-2">Max UMS: {selectedUmsBoundary.maxUMS}</span>
+                    </div>
+
+                    <div className="overflow-hidden rounded-2xl border border-white/10">
+                      <table className="w-full text-left text-xs">
+                        <thead className="bg-white/[0.035] text-white/40">
+                          <tr>
+                            <th className="px-3 py-2">Grade</th>
+                            <th className="px-3 py-2">Raw needed</th>
+                            <th className="px-3 py-2">UMS needed</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-white/10">
+                          {umsGrades.map((grade) => (
+                            <tr key={grade}>
+                              <td className="px-3 py-2 font-black text-white">{grade}</td>
+                              <td className="px-3 py-2 font-bold text-white/62">{selectedUmsBoundary.rawBoundaries?.[grade] ?? minimumRawForUms(selectedUmsBoundary.umsBoundaries?.[grade], selectedUmsBoundary) ?? "-"}</td>
+                              <td className="px-3 py-2 font-bold text-white/62">{selectedUmsBoundary.umsBoundaries?.[grade] ?? "-"}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </aside>
               </div>
+
             </>
           )}
         </>
@@ -3722,7 +4195,7 @@ function PastPapersLandingPage({
   const availableBoards = ["All boards", ...unique(subjects.map((subject) => subject.board))];
   const availableYears = [
     "All years",
-    ...sortYearsDescending(unique(allSubjectPapers.map((paper) => paper.year))),
+    ...sortYearsDescending(unique(allSubjectPapers.map((paper) => paper.year).filter(Boolean))).map(String),
   ];
 
   const filteredSubjects = subjectPaperGroups.filter(({ subject, papers: subjectPapers }) => {
@@ -3766,7 +4239,7 @@ function PastPapersLandingPage({
 
       return (
         text.includes(search.toLowerCase()) &&
-        (yearFilter === "All years" || paper.year === yearFilter) &&
+        (yearFilter === "All years" || String(paper.year) === String(yearFilter)) &&
         (markedFilter === "All" ||
           (markedFilter === "Marked" && isMarked) ||
           (markedFilter === "Unmarked" && !isMarked))
@@ -3784,7 +4257,7 @@ function PastPapersLandingPage({
       groups: grouped.filter((group) => group.papers.length > 0),
       totalMatchingPapers: filteredPapers.length,
     };
-  });
+  }).filter((section) => section.totalMatchingPapers > 0);
 
   return (
     <section className="space-y-6">
@@ -3864,7 +4337,7 @@ function PastPapersLandingPage({
           </div>
         ) : subjectSections.length === 0 ? (
           <div className="rounded-3xl border border-white/10 bg-white/[0.035] p-6 text-white/48">
-            No papers found for your selected subjects yet.
+            No papers found for this filter.
           </div>
         ) : (
           subjectSections.map(({ subject, groups, totalMatchingPapers }) => {
@@ -3974,13 +4447,13 @@ function PastPapersLandingPage({
                                     <FileText size={25} />
                                   </div>
                                   <p className="line-clamp-2 text-sm font-black text-white">
-                                    {paper.unit || group.unit}
+                                    {paperCardTitle(paper, group.unit)}
                                   </p>
                                   <p className="hidden">
                                     {paper.session || "Session"} {paper.year || ""} · {paper.unit || group.unit}
                                   </p>
                                   <p className="mt-1 text-xs font-bold text-white/48">
-                                    {paper.session || "Session"} {paper.year || ""}
+                                    {paperSessionLabel(paper) || "Session"}
                                   </p>
                                   <p className="mt-0.5 truncate text-xs text-white/32">
                                     {paper.qualification || "Question paper"}
@@ -3988,6 +4461,11 @@ function PastPapersLandingPage({
                                 </div>
 
                                 <div className="relative z-10 mt-3 flex flex-wrap gap-1.5">
+                                  {paper.variant && (
+                                    <span className="rounded-full border border-cyan-300/20 bg-cyan-300/10 px-2 py-1 text-[9px] font-black uppercase tracking-[0.1em] text-cyan-100">
+                                      {paper.variant}
+                                    </span>
+                                  )}
                                   {paperInsert && (
                                     <span className="rounded-full border border-violet-300/20 bg-violet-300/10 px-2 py-1 text-[9px] font-black uppercase tracking-[0.1em] text-violet-100">
                                       {paperInsert.label}
@@ -4013,12 +4491,16 @@ function PastPapersLandingPage({
                                     type="button"
                                     onClick={(event) => {
                                       event.stopPropagation();
-                                      onOpenPaperEdit(subject.id, paper);
+                                      if (isPdfPaper(paper)) {
+                                        onOpenPaperEdit(subject.id, paper);
+                                      } else {
+                                        openPaperFile(paper);
+                                      }
                                     }}
                                     className={`mt-2 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r ${visual.accent} px-3 py-2 text-xs font-black text-white shadow-lg ${visual.glow} transition-all duration-200 ease-out hover:-translate-y-0.5 hover:brightness-110`}
                                   >
-                                    <Edit3 size={14} />
-                                    PDF Edit
+                                    {isPdfPaper(paper) ? <Edit3 size={14} /> : <Eye size={14} />}
+                                    {isPdfPaper(paper) ? "PDF Edit" : "View Paper"}
                                   </button>
                                 </div>
                               </article>
@@ -4200,7 +4682,7 @@ function PastPapersPanel({
 
   const availableYears = [
     "All years",
-    ...sortYearsDescending(unique(subjectPastPapers.map((paper) => paper.year))),
+    ...sortYearsDescending(unique(subjectPastPapers.map((paper) => paper.year).filter(Boolean))).map(String),
   ];
 
   const availableSessions = [
@@ -4222,7 +4704,7 @@ function PastPapersPanel({
       (selectedQualification === "All qualifications" ||
         paper.qualification === selectedQualification) &&
       (selectedUnit === "All units" || paper.unit === selectedUnit) &&
-      (selectedYear === "All years" || paper.year === selectedYear) &&
+      (selectedYear === "All years" || String(paper.year) === String(selectedYear)) &&
       (selectedSession === "All sessions" || paper.session === selectedSession) &&
       (completionFilter === "All papers" ||
         (completionFilter === "Complete" && isCompleted) ||
@@ -4397,15 +4879,20 @@ function PastPapersPanel({
                 Question paper
                 </p>
 
-                <PdfViewer
-                fileUrl={
-                    activePreview.paper.questionPaper || activePreview.paper.pdf
-                }
-                editable={activePreview.mode === "edit"}
-                user={user}
-                paperId={paperId(activePreview.paper)}
-                pdfType="question"
-                />
+                {isPdfPaper(activePreview.paper) ? (
+                  <PdfViewer
+                    fileUrl={activePreview.paper.questionPaper || activePreview.paper.pdf}
+                    editable={activePreview.mode === "edit"}
+                    user={user}
+                    paperId={paperId(activePreview.paper)}
+                    pdfType="question"
+                  />
+                ) : (
+                  <DocumentFrame
+                    url={activePreview.paper.questionPaper || activePreview.paper.questionUrl || activePreview.paper.pdf}
+                    title={paperLabel(activePreview.paper)}
+                  />
+                )}
             </div>
 
             {showMarkScheme && activePreview.paper.markScheme && (
@@ -4422,10 +4909,7 @@ function PastPapersPanel({
                     Mark scheme
                 </p>
 
-                <PdfViewer
-                    fileUrl={activePreview.paper.markScheme}
-                    editable={false}
-                />
+                <DocumentFrame url={activePreview.paper.markScheme} title={`${paperLabel(activePreview.paper)} mark scheme`} />
                 </div>
             )}
             {showInsert && activePaperInsert && (
@@ -4552,7 +5036,7 @@ function PastPapersPanel({
                       <div>
                         <div className="flex flex-wrap items-center gap-2">
                           <h4 className="font-black text-white">
-                            {paperLabel(paper)}
+                            {paperCardTitle(paper, paper.unit)} - {paperSessionLabel(paper)}
                           </h4>
 
                           {isAnnotated && (
@@ -4612,13 +5096,17 @@ function PastPapersPanel({
                       <button
                        onClick={() =>
   requireLogin(() => {
-    openPaperPreview(paper, "edit", false);
+    if (isPdfPaper(paper)) {
+      openPaperPreview(paper, "edit", false);
+    } else {
+      openPaperFile(paper);
+    }
   })
 }
                         className="inline-flex items-center gap-2 rounded-xl bg-cyan-300 px-5 py-2.5 text-sm font-black text-slate-950 shadow-[0_0_22px_rgba(34,211,238,0.18)] transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-cyan-200"
                       >
-                        <Edit3 size={16} />
-                        PDF Edit
+                        {isPdfPaper(paper) ? <Edit3 size={16} /> : <Eye size={16} />}
+                        {isPdfPaper(paper) ? "PDF Edit" : "View Paper"}
                       </button>
 
                       {paper.questionPaper && (
@@ -4659,6 +5147,299 @@ function PastPapersPanel({
     </div>
   );
 }
+function TopicTestsLandingPage({
+  subjects = [],
+  onOpenSubject = () => {},
+  onOpenTopicTest = () => {},
+}) {
+  const [search, setSearch] = useState("");
+  const [subjectFilter, setSubjectFilter] = useState("All selected subjects");
+  const [boardFilter, setBoardFilter] = useState("All boards");
+  const [yearFilter, setYearFilter] = useState("All years");
+
+  const subjectTestGroups = useMemo(
+    () =>
+      subjects.map((subject) => ({
+        subject,
+        tests: getSubjectTopicTests(subject),
+      })),
+    [subjects]
+  );
+
+  const allTopicTests = useMemo(
+    () => subjectTestGroups.flatMap(({ tests }) => tests),
+    [subjectTestGroups]
+  );
+  const availableBoards = ["All boards", ...unique(subjects.map((subject) => subject.board))];
+  const availableYears = [
+    "All years",
+    ...sortYearsDescending(unique(allTopicTests.map((test) => test.year).filter(Boolean))).map(String),
+  ];
+  const hasYearFilter = availableYears.length > 1;
+
+  function topicUnitLabel(test) {
+    if (test.unit || test.paper) return test.unit || test.paper;
+    const text = `${test.title || ""} ${test.topic || ""} ${test.qualification || ""}`.toLowerCase();
+    const unitMatch = text.match(/\bunit\s*([1-9])\b/);
+    if (unitMatch) return `Unit ${unitMatch[1]}`;
+    const paperMatch = text.match(/\bpaper\s*([1-9])\b/);
+    if (paperMatch) return `Paper ${paperMatch[1]}`;
+    const pureMatch = text.match(/\bpure\s*([1-4])\b/);
+    if (pureMatch) return `Pure ${pureMatch[1]}`;
+    const statsMatch = text.match(/\bstatistics\s*([1-3])\b/);
+    if (statsMatch) return `Statistics ${statsMatch[1]}`;
+    const mechanicsMatch = text.match(/\bmechanics\s*([1-3])\b/);
+    if (mechanicsMatch) return `Mechanics ${mechanicsMatch[1]}`;
+    const decisionsMatch = text.match(/\bdecisions?\s*([12])\b/);
+    if (decisionsMatch) return `Decisions ${decisionsMatch[1]}`;
+    return test.qualification ? `${test.qualification} topic tests` : "Topic tests";
+  }
+
+  function topicCarouselId(subjectId, unit) {
+    return `topic-test-carousel-${subjectId}-${String(unit)
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")}`;
+  }
+
+  function scrollTopicCarousel(id, direction) {
+    const carousel = document.getElementById(id);
+    if (!carousel) return;
+    carousel.scrollBy({
+      left: direction * Math.min(carousel.clientWidth * 0.85, 620),
+      behavior: "smooth",
+    });
+  }
+
+  const filteredSubjects = subjectTestGroups.filter(({ subject }) => (
+    (subjectFilter === "All selected subjects" || subject.id === subjectFilter) &&
+    (boardFilter === "All boards" || subject.board === boardFilter)
+  ));
+
+  const subjectSections = filteredSubjects
+    .map(({ subject, tests }) => {
+      const filteredTests = tests.filter((test) => {
+        const text = `${test.title || ""} ${test.topic || ""} ${test.subject || ""} ${test.board || ""} ${test.qualification || ""} ${topicUnitLabel(test)} ${test.year || ""}`.toLowerCase();
+        return (
+          text.includes(search.toLowerCase()) &&
+          (yearFilter === "All years" || String(test.year) === String(yearFilter))
+        );
+      });
+
+      const groups = sortUnits(unique(filteredTests.map(topicUnitLabel))).map((unit) => {
+        const unitTests = filteredTests.filter((test) => topicUnitLabel(test) === unit);
+        return {
+          unit,
+          tests: unitTests.slice(0, 12),
+          total: unitTests.length,
+        };
+      });
+
+      return {
+        subject,
+        groups: groups.filter((group) => group.tests.length > 0),
+        totalMatchingTests: filteredTests.length,
+      };
+    })
+    .filter((section) => section.totalMatchingTests > 0);
+
+  return (
+    <section className="space-y-6">
+      <div className="rounded-3xl border border-white/10 bg-slate-950/55 p-5 shadow-2xl shadow-black/20">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.24em] text-cyan-200/80">
+              A-Level Dojo Practice
+            </p>
+            <h1 className="mt-2 text-3xl font-black text-white">Topic Tests</h1>
+            <p className="mt-2 text-sm text-white/52">
+              Choose a subject and practise by paper or unit.
+            </p>
+          </div>
+
+          <div className="relative w-full max-w-xl">
+            <Search className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-white/35" size={18} />
+            <input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search subjects, papers, units..."
+              className="w-full rounded-2xl border border-white/10 bg-white/[0.045] py-3 pl-11 pr-4 text-sm font-bold text-white outline-none placeholder:text-white/35 focus:border-cyan-300/60"
+            />
+          </div>
+        </div>
+
+        <div className={`mt-5 grid gap-3 md:grid-cols-2 ${hasYearFilter ? "xl:grid-cols-3" : "xl:grid-cols-2"}`}>
+          <select
+            value={subjectFilter}
+            onChange={(event) => setSubjectFilter(event.target.value)}
+            className="rounded-xl border border-white/10 bg-slate-950 px-3 py-3 text-sm text-white outline-none focus:border-cyan-300"
+          >
+            <option>All selected subjects</option>
+            {subjects.map((subject) => (
+              <option key={subject.id} value={subject.id}>
+                {subject.name}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={boardFilter}
+            onChange={(event) => setBoardFilter(event.target.value)}
+            className="rounded-xl border border-white/10 bg-slate-950 px-3 py-3 text-sm text-white outline-none focus:border-cyan-300"
+          >
+            {availableBoards.map((board) => (
+              <option key={board}>{board}</option>
+            ))}
+          </select>
+
+          {hasYearFilter && (
+            <select
+              value={yearFilter}
+              onChange={(event) => setYearFilter(event.target.value)}
+              className="rounded-xl border border-white/10 bg-slate-950 px-3 py-3 text-sm text-white outline-none focus:border-cyan-300"
+            >
+              {availableYears.map((year) => (
+                <option key={year}>{year}</option>
+              ))}
+            </select>
+          )}
+        </div>
+      </div>
+
+      <section className="space-y-4">
+        {subjects.length === 0 ? (
+          <div className="rounded-3xl border border-white/10 bg-white/[0.035] p-6 text-white/48">
+            No subjects selected yet. Go to settings to add subjects.
+          </div>
+        ) : allTopicTests.length === 0 ? (
+          <div className="rounded-3xl border border-white/10 bg-white/[0.035] p-6 text-white/48">
+            <p className="font-black text-white/70">No topic tests added yet.</p>
+            <p className="mt-2 text-sm">Add files to public/topic-tests to activate this page.</p>
+          </div>
+        ) : subjectSections.length === 0 ? (
+          <div className="rounded-3xl border border-white/10 bg-white/[0.035] p-6 text-white/48">
+            No topic tests found for this filter.
+          </div>
+        ) : (
+          subjectSections.map(({ subject, groups, totalMatchingTests }) => {
+            const visual = subjectVisuals[normalizeSubjectName(subject.name)] || defaultSubjectVisual;
+            const Icon = visual.icon || Layers3;
+
+            return (
+              <article
+                key={subject.id}
+                className="rounded-3xl border border-white/10 bg-white/[0.035] p-4 shadow-xl shadow-black/15"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-4">
+                  <div className="flex items-center gap-3">
+                    <div className={`hidden rounded-2xl border p-2.5 sm:inline-flex ${visual.soft}`}>
+                      <Icon size={18} />
+                    </div>
+                    <div>
+                      <h2 className="text-xl font-black text-white">{subject.name}</h2>
+                      <p className="mt-0.5 text-sm text-white/42">
+                        {subject.board} · {totalMatchingTests} matching test{totalMatchingTests === 1 ? "" : "s"}
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => onOpenSubject(subject.id, "topictests")}
+                    className="rounded-xl border border-cyan-300/25 bg-cyan-300/10 px-4 py-2 text-sm font-black text-cyan-100 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-cyan-300/15"
+                  >
+                    Go to subject
+                  </button>
+                </div>
+
+                <div className="divide-y divide-white/10">
+                  {groups.map((group) => {
+                    const carouselKey = topicCarouselId(subject.id, group.unit);
+
+                    return (
+                      <div key={group.unit} className="py-4">
+                        <div className="mb-2 flex items-center justify-between gap-3">
+                          <h3 className="text-sm font-black uppercase tracking-[0.16em] text-white/58">
+                            {group.unit}
+                          </h3>
+                          <div className="flex items-center gap-2">
+                            {group.total > group.tests.length && (
+                              <button
+                                type="button"
+                                onClick={() => onOpenSubject(subject.id, "topictests")}
+                                className="text-xs font-black text-cyan-200 hover:text-cyan-100"
+                              >
+                                View all
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => scrollTopicCarousel(carouselKey, -1)}
+                              aria-label={`Scroll ${group.unit} topic tests left`}
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/[0.045] text-white/55 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:border-cyan-300/25 hover:bg-cyan-300/10 hover:text-cyan-100"
+                            >
+                              <ArrowLeft size={14} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => scrollTopicCarousel(carouselKey, 1)}
+                              aria-label={`Scroll ${group.unit} topic tests right`}
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/[0.045] text-white/55 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:border-cyan-300/25 hover:bg-cyan-300/10 hover:text-cyan-100"
+                            >
+                              <ChevronRight size={15} />
+                            </button>
+                          </div>
+                        </div>
+
+                        <div
+                          id={carouselKey}
+                          className="scrollbar-hidden flex snap-x snap-mandatory gap-4 overflow-x-auto scroll-smooth pb-2 pr-2"
+                        >
+                          {group.tests.map((test) => (
+                            <article
+                              key={paperId(test)}
+                              className="relative flex min-h-[180px] w-[230px] shrink-0 snap-start flex-col justify-between overflow-hidden rounded-2xl border border-white/10 bg-slate-950/40 p-4 text-left transition-all duration-200 ease-out hover:-translate-y-0.5 hover:border-cyan-300/25 hover:bg-white/[0.055] hover:shadow-[0_0_24px_rgba(34,211,238,0.08)]"
+                            >
+                              <Layers3
+                                className="pointer-events-none absolute -right-2 top-3 text-cyan-200/[0.07]"
+                                size={76}
+                              />
+                              <div className="relative z-10">
+                                <div className={`mb-3 inline-flex rounded-2xl border p-3 ${visual.soft}`}>
+                                  <Layers3 size={25} />
+                                </div>
+                                <p className="line-clamp-2 text-sm font-black text-white">
+                                  {test.topic || test.title || group.unit}
+                                </p>
+                                <p className="mt-1 text-xs font-bold text-white/48">{group.unit}</p>
+                                <p className="mt-0.5 truncate text-xs text-white/32">
+                                  {test.subject} · {test.board}
+                                </p>
+                              </div>
+
+                              <button
+                                type="button"
+                                onClick={() => onOpenTopicTest(subject.id, test)}
+                                className={`relative z-10 mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r ${visual.accent} px-3 py-2 text-xs font-black text-white shadow-lg ${visual.glow} transition-all duration-200 ease-out hover:-translate-y-0.5 hover:brightness-110`}
+                              >
+                                <Eye size={14} />
+                                Start test
+                              </button>
+                            </article>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </article>
+            );
+          })
+        )}
+      </section>
+    </section>
+  );
+}
+
 function TopicTestsPanel({
   subject,
   user,
@@ -5156,7 +5937,7 @@ function SubjectPagePreview({
         className="mb-5 inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2 text-sm font-bold text-white/65 hover:bg-white/[0.08]"
       >
         <ArrowLeft size={16} />
-        Back to dashboard
+        Back to Home
       </button>
 
       <div className="mb-5 rounded-3xl border border-white/10 bg-white/[0.04] p-6">
@@ -5299,6 +6080,7 @@ export default function Dashboard({
   const [activeSubjectId, setActiveSubjectId] = useState(persistedDashboardState.activeSubjectId || null);
   const [subjectSection, setSubjectSection] = useState(persistedDashboardState.subjectSection || "overview");
   const [profileOpen, setProfileOpen] = useState(false);
+  const [subjectPickerOpen, setSubjectPickerOpen] = useState(false);
   const [allExamsCalendarOpen, setAllExamsCalendarOpen] = useState(false);
   const [openedResource, setOpenedResource] = useState({
     openedPaper: persistedDashboardState.openedPaper || null,
@@ -5463,7 +6245,7 @@ export default function Dashboard({
   const activeSubject = subjectsWithProgress.find((subject) => subject.id === activeSubjectId) || null;
   const dashboardSearchTerm = dashboardSearch.trim().toLowerCase();
   const dashboardFeatureResults = [
-    { label: "Dashboard", detail: "Home overview", action: () => selectView("dashboard"), keywords: "home overview" },
+    { label: "Home", detail: "Overview", action: () => selectView("dashboard"), keywords: "dashboard home overview" },
     { label: "Past papers", detail: "Browse papers", action: () => selectView("pastpapers"), keywords: "paper exam pdf" },
     { label: "Topic tests", detail: "Topic practice", action: () => selectView("topictests"), keywords: "topic test practice" },
     { label: "Exam calendar", detail: "Upcoming exams", action: () => selectView("calendar"), keywords: "calendar timetable dates" },
@@ -5759,6 +6541,37 @@ export default function Dashboard({
     setDraftSelectedIds(ids);
   }
 
+  function openSubjectPicker() {
+    setDraftSelectedIds(selectedIds);
+    setSubjectPickerOpen(true);
+  }
+
+  async function saveSubjectsFromPicker(nextIds) {
+    const nextSubjects = subjects
+      .filter((subject) => nextIds.includes(subject.id))
+      .map((subject) => ({ board: subject.board, subject: subject.name }));
+    const hasCambridgeSubject = nextSubjects.some((subject) => subject.board === "Cambridge");
+    const nextProfile = {
+      ...(dashboardProfile || profile || {}),
+      subjects: nextSubjects,
+      selected_subjects: nextSubjects,
+      cambridge_zone: hasCambridgeSubject
+        ? dashboardProfile?.cambridge_zone || dashboardProfile?.exam_zone || profile?.cambridge_zone || profile?.exam_zone || null
+        : null,
+      onboarding_completed: true,
+      updated_at: new Date().toISOString(),
+    };
+
+    await saveDashboardProfile(nextProfile);
+
+    if (activeSubjectId && !nextIds.includes(activeSubjectId)) {
+      setActiveSubjectId(null);
+      setSubjectSection("overview");
+      setActiveView("dashboard");
+      setOpenedResource({ openedPaper: null, openedTopicTest: null });
+    }
+  }
+
   function openSubject(id, section = "overview") {
     setActiveSubjectId(id);
     setSubjectSection(section);
@@ -5782,14 +6595,25 @@ export default function Dashboard({
     });
   }
 
+  function openTopicTestFromLanding(subjectId, test) {
+    if (!subjectId || !test) return;
+    setActiveSubjectId(subjectId);
+    setSubjectSection("topictests");
+    setActiveView("topictests");
+    setOpenedResource({
+      openedPaper: null,
+      openedTopicTest: {
+        type: "topicTest",
+        paperId: paperId(test),
+        mode: "preview",
+      },
+    });
+  }
+
   function selectView(view) {
     setActiveSubjectId(null);
     setActiveView(view);
     setOpenedResource({ openedPaper: null, openedTopicTest: null });
-
-    if (view === "topictests" && activeSubjects[0]) {
-      openSubject(activeSubjects[0].id, view);
-    }
   }
 
   async function handleLogout() {
@@ -5865,7 +6689,7 @@ export default function Dashboard({
         <Watermark />
         <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-8 text-center">
           <p className="text-sm font-black uppercase tracking-[0.22em] text-cyan-200">A-Level Dojo</p>
-          <p className="mt-3 text-white/55">Loading your dashboard...</p>
+          <p className="mt-3 text-white/55">Loading Home...</p>
         </div>
       </div>
     );
@@ -5937,7 +6761,7 @@ export default function Dashboard({
               onChange={(event) => selectView(event.target.value)}
               className="rounded-2xl border border-white/10 bg-slate-950 px-3 py-2 text-sm font-bold text-white outline-none"
             >
-              <option value="dashboard">Dashboard</option>
+              <option value="dashboard">Home</option>
               <option value="pastpapers">Past papers</option>
               <option value="topictests">Topic tests</option>
               <option value="calendar">Exam calendar</option>
@@ -6025,7 +6849,7 @@ export default function Dashboard({
                       </div>
                     )}
                     {dashboardFeatureResults.length === 0 && dashboardSubjectResults.length === 0 && (
-                      <p className="px-3 py-4 text-sm font-bold text-white/42">No matching dashboard results.</p>
+                      <p className="px-3 py-4 text-sm font-bold text-white/42">No matching Home results.</p>
                     )}
                   </div>
                 )}
@@ -6166,6 +6990,12 @@ export default function Dashboard({
               onOpenSubject={openSubject}
               onOpenPaperEdit={openPaperFromLanding}
             />
+          ) : activeView === "topictests" ? (
+            <TopicTestsLandingPage
+              subjects={activeSubjects}
+              onOpenSubject={openSubject}
+              onOpenTopicTest={openTopicTestFromLanding}
+            />
           ) : activeView === "mistakes" ? (
             <MistakesTrackerPanel mistakes={mistakes} setMistakes={setMistakes} subjects={activeSubjects} onAwardXP={awardXP} />
           ) : activeView === "boundaries" ? (
@@ -6199,11 +7029,18 @@ export default function Dashboard({
               onOpenPricing={onOpenPricing}
               greeting={dashboardGreeting}
               needsCambridgeZone={needsCambridgeZone}
+              onOpenSubjectPicker={openSubjectPicker}
               onOpenAllExams={() => setAllExamsCalendarOpen(true)}
             />
           )}
         </main>
       </div>
+      <ChangeSubjectsModal
+        open={subjectPickerOpen}
+        selectedIds={selectedIds}
+        onClose={() => setSubjectPickerOpen(false)}
+        onSave={saveSubjectsFromPicker}
+      />
     </div>
   );
 }

@@ -5,8 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "npm run build:boundaries && vite build",
+    "build": "npm run build:papers && npm run build:boundaries && npm run build:ums && vite build",
+    "build:papers": "node scripts/buildPapers.mjs",
     "build:boundaries": "node scripts/buildGradeBoundaries.mjs",
+    "build:ums": "node scripts/buildUmsBoundaries.mjs",
     "lint": "eslint .",
     "preview": "vite preview"
   },
