@@ -1,6 +1,8 @@
 import { umsBoundaries as generatedUmsBoundaries } from "./umsBoundaries.generated";
 
-// Add official UMS conversion files to public/ums-boundaries, then run:
+// Add official UMS conversion files to public/ums-boundaries, Pearson URLs to
+// src/data/edexcelUmsSources.js, or exact manual rows to
+// src/data/edexcelUmsManual.js, then run:
 // npm run build:ums
 //
 // Generated rows use this shape:

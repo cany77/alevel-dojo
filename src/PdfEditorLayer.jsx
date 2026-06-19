@@ -5,6 +5,7 @@ import {
   ChevronDown,
   Circle as CircleIcon,
   Eraser,
+  FileDown,
   Highlighter,
   Minus,
   MousePointer2,
@@ -20,6 +21,7 @@ import {
   Undo2,
 } from "lucide-react";
 import { supabase } from "./supabaseClient";
+import { exportAnnotatedPdf } from "./pdfExport";
 
 const toolOptions = [
   { id: "select", label: "Select", icon: MousePointer2 },
@@ -176,6 +178,7 @@ export default function PdfEditorLayer({
   user = null,
   paperId = "",
   pdfType = "question",
+  exportFileName = "A-Level-Dojo-Paper-Export.pdf",
 }) {
   const markerRef = useRef(null);
   const saveTimerRef = useRef(null);
@@ -204,6 +207,8 @@ export default function PdfEditorLayer({
   const [pageElements, setPageElements] = useState([]);
   const [eraserSize, setEraserSize] = useState("medium");
   const [eraserCursor, setEraserCursor] = useState(null);
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportError, setExportError] = useState("");
 
   const eraserRadius =
     eraserSizes.find((sizeOption) => sizeOption.id === eraserSize)?.radius || 22;
@@ -832,6 +837,24 @@ export default function PdfEditorLayer({
     scheduleSave(restored);
   }
 
+  async function exportCurrentPdf() {
+    if (isExporting) return;
+    setExportError("");
+    setIsExporting(true);
+
+    try {
+      await exportAnnotatedPdf({
+        fileUrl: storageKey,
+        annotations: annotationsRef.current,
+        fileName: exportFileName,
+      });
+    } catch (error) {
+      setExportError(error?.message || "Export failed. Please try again.");
+    } finally {
+      setIsExporting(false);
+    }
+  }
+
   function renderShape(annotation, pageSize, isDraft = false) {
     const x = annotation.x * pageSize.width;
     const y = annotation.y * pageSize.height;
@@ -1235,12 +1258,25 @@ export default function PdfEditorLayer({
             >
               <Redo2 size={19} />
             </button>
+
+            <div className="mx-1 h-7 w-px bg-white/10" />
+
+            <button
+              type="button"
+              title={isExporting ? "Exporting..." : "Export PDF"}
+              aria-label="Export PDF"
+              onClick={exportCurrentPdf}
+              disabled={isExporting}
+              className="flex h-11 w-11 items-center justify-center rounded-xl bg-cyan-300 text-slate-950 transition hover:bg-cyan-200 disabled:cursor-wait disabled:opacity-70"
+            >
+              <FileDown size={19} />
+            </button>
           </div>
         </div>
       </div>
 
       <div className="absolute bottom-4 left-4 z-[9998] flex items-center gap-2 rounded-full border border-white/10 bg-slate-950/88 px-3 py-1.5 text-xs font-bold text-white/65 backdrop-blur">
-        <span>{saveStatus}</span>
+        <span>{isExporting ? "Exporting..." : exportError || saveStatus}</span>
         <span className="h-3 w-px bg-white/15" />
         <button
           type="button"

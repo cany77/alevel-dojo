@@ -11,6 +11,7 @@ export default function PdfViewer({
   user = null,
   paperId = "",
   pdfType = "question",
+  exportFileName = "A-Level-Dojo-Paper-Export.pdf",
 }) {
   const defaultLayoutPluginInstance = defaultLayoutPlugin();
 
@@ -26,6 +27,7 @@ export default function PdfViewer({
           user={user}
           paperId={paperId}
           pdfType={pdfType}
+          exportFileName={exportFileName}
         />
       )}
     </div>

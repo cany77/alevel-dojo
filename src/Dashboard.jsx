@@ -6,6 +6,7 @@ import { supabase } from "./supabaseClient";
 import PdfViewer from "./PdfViewer";
 import Watermark from "./Watermark";
 import usePersistentState from "./usePersistentState";
+import { annotationsFromPayload, cleanPdfExportFilename, exportAnnotatedPdf } from "./pdfExport";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   BarChart3,
@@ -346,6 +347,21 @@ function paperLabel(paper) {
     paper.session || ""
   } ${paper.year || ""} • ${paper.unit || ""}`;
 }
+function paperExportFileName(paper = {}) {
+  return cleanPdfExportFilename(
+    [
+      "A-Level-Dojo",
+      paper.subject,
+      paper.board,
+      paper.unit || paper.paper,
+      paper.session || paper.year,
+      paper.variant,
+    ]
+      .filter(Boolean)
+      .join("-")
+  );
+}
+
 function paperSessionLabel(paper = {}) {
   const session = String(paper.session || "").trim();
   const year = paper.year ? String(paper.year) : "";
@@ -2346,13 +2362,6 @@ function GradeBoundariesPanel({ subjects = [] }) {
     if (!umsData?.rawToUms) return null;
     const roundedRaw = Math.round(Number(rawMark));
     if (!Number.isFinite(roundedRaw)) return null;
-    const rawKeys = Object.keys(umsData.rawToUms)
-      .map(Number)
-      .filter(Number.isFinite)
-      .sort((a, b) => a - b);
-    if (!rawKeys.length) return null;
-    if (roundedRaw > rawKeys[rawKeys.length - 1]) return Number(umsData.maxUMS);
-    if (roundedRaw < rawKeys[0]) return Number(umsData.rawToUms[String(rawKeys[0])]);
     const exact = umsData.rawToUms[String(roundedRaw)];
     return Number.isFinite(Number(exact)) ? Number(exact) : null;
   }
@@ -2433,20 +2442,36 @@ function GradeBoundariesPanel({ subjects = [] }) {
     );
   }, [boundaryRows, selectedBoard, selectedSubject]);
 
+  const umsRowsForSelectedSubject = useMemo(() => {
+    if (!selectedSubject) return [];
+    return umsBoundaries.filter((row) => boundarySubjectKey(row.subject) === boundarySubjectKey(selectedSubject.name));
+  }, [selectedSubject]);
+
+  const umsDataForSelectedSubject = useMemo(() => {
+    if (!selectedSubject) return [];
+    const activeBoard = selectedBoard || selectedSubject.board;
+    return umsRowsForSelectedSubject.filter((row) => boundaryBoardKey(row.board) === boundaryBoardKey(activeBoard));
+  }, [selectedBoard, selectedSubject, umsRowsForSelectedSubject]);
+
   const boardOptions = useMemo(() => {
     const boards = unique(
-      boundaryRows
-        .filter((row) => selectedSubject && boundarySubjectKey(row.subject) === boundarySubjectKey(selectedSubject.name))
-        .map((row) => row.board)
-        .filter(Boolean)
+      [
+        ...boundaryRows
+          .filter((row) => selectedSubject && boundarySubjectKey(row.subject) === boundarySubjectKey(selectedSubject.name))
+          .map((row) => row.board),
+        ...umsRowsForSelectedSubject.map((row) => row.board),
+      ].filter(Boolean)
     );
     if (selectedSubject?.board && !boards.includes(selectedSubject.board)) boards.unshift(selectedSubject.board);
     return boards.length ? boards : selectedSubject?.board ? [selectedSubject.board] : [];
-  }, [boundaryRows, selectedSubject]);
+  }, [boundaryRows, selectedSubject, umsRowsForSelectedSubject]);
 
   const unitOptions = useMemo(
-    () => sortUnits(unique(dataForSelectedSubject.map(boundaryUnit))),
-    [dataForSelectedSubject]
+    () => sortUnits(unique([
+      ...dataForSelectedSubject.map(boundaryUnit),
+      ...umsDataForSelectedSubject.map((row) => row.unit || row.paper).filter(Boolean),
+    ])),
+    [dataForSelectedSubject, umsDataForSelectedSubject]
   );
 
   useEffect(() => {
@@ -2531,6 +2556,8 @@ function GradeBoundariesPanel({ subjects = [] }) {
   const predictionMaxMark = chronologicalRows[chronologicalRows.length - 1]?.max_mark || latestRow?.max_mark || maxChartMark;
   const selectedUmsBoundary = matchingUmsBoundary();
   const isCambridgeBoundary = boundaryBoardKey(selectedBoard || selectedSubject?.board) === "cambridge";
+  const isEdexcelBoundary = boundaryBoardKey(selectedBoard || selectedSubject?.board) === "edexcel";
+  const isEdexcelUmsBoundary = selectedUmsBoundary && boundaryBoardKey(selectedUmsBoundary.board) === "edexcel";
   const selectedThresholdBoundary = !selectedUmsBoundary && isCambridgeBoundary ? filteredRows[0] || null : null;
   const rawMarkValue = Number(rawMarkInput);
   const umsMarkValue = Number(umsMarkInput);
@@ -2653,24 +2680,27 @@ function GradeBoundariesPanel({ subjects = [] }) {
             <div className="mt-5 rounded-2xl border border-white/10 bg-slate-950/45 p-6 text-sm font-bold text-white/50">
               Loading grade boundaries...
             </div>
-          ) : filteredRows.length === 0 ? (
-            <div className="mt-5 rounded-2xl border border-white/10 bg-slate-950/45 p-6">
-              <p className="text-lg font-black text-white">
-                {boundaryRows.length === 0
-                  ? "No grade boundary data found."
-                  : "No grade boundary data available yet for this subject/paper."}
-              </p>
-              <p className="mt-2 text-sm text-white/45">
-                {boundaryRows.length === 0
-                  ? "Add official files to public/grade-boundaries and run npm run build:boundaries."
-                  : "Once matching official boundaries are generated, this chart will show the last 5 seasons and next-season prediction."}
-              </p>
-              {boundaryError && <p className="mt-3 text-xs font-bold text-rose-200">{boundaryError}</p>}
-            </div>
           ) : (
             <>
               <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px] xl:items-start">
               <div className="space-y-3">
+              {filteredRows.length === 0 ? (
+                <div className="rounded-2xl border border-white/10 bg-slate-950/55 p-6 shadow-2xl shadow-black/20">
+                  <p className="text-lg font-black text-white">No grade-boundary trend data yet for this unit.</p>
+                  <p className="mt-2 text-sm font-bold leading-6 text-white/48">
+                    {isEdexcelBoundary
+                      ? "Add Edexcel grade-boundary files to public/grade-boundaries to activate the trend graph."
+                      : "Add official grade-boundary files to public/grade-boundaries to activate the trend graph."}
+                  </p>
+                  {boundaryRows.length === 0 && (
+                    <p className="mt-3 text-xs font-bold text-cyan-100/60">
+                      No generated graph rows were found. Run npm run build:boundaries after adding official files.
+                    </p>
+                  )}
+                  {boundaryError && <p className="mt-3 text-xs font-bold text-rose-200">{boundaryError}</p>}
+                </div>
+              ) : (
+                <>
               <div
                 className="relative rounded-2xl border border-white/10 bg-slate-950/55 p-4 shadow-2xl shadow-black/20"
                 onMouseLeave={() => setBoundaryTooltip(null)}
@@ -2848,13 +2878,21 @@ function GradeBoundariesPanel({ subjects = [] }) {
                 <MetricCard label="Predicted" value={predictedMark ?? "-"} detail={`${predictionLabel} ${insightGrade}`} accent="text-cyan-200" />
                 <MetricCard label="Trend" value={overallTrend} detail={insightGrade} accent="text-violet-200" />
               </div>
+                </>
+              )}
               </div>
 
               <aside className="rounded-2xl border border-white/10 bg-slate-950/55 p-4 shadow-2xl shadow-black/20">
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <h3 className="text-lg font-black text-white">
-                      {selectedUmsBoundary ? `${selectedUmsBoundary.board} UMS Calculator` : selectedThresholdBoundary ? "Threshold Calculator" : "Conversion Calculator"}
+                      {selectedUmsBoundary
+                        ? isEdexcelUmsBoundary
+                          ? "Edexcel UMS Calculator"
+                          : `${selectedUmsBoundary.board} UMS Calculator`
+                        : selectedThresholdBoundary
+                          ? "Threshold Calculator"
+                          : "Conversion Calculator"}
                     </h3>
                     <p className="mt-1 text-xs font-bold text-white/40">
                       {selectedSubject?.name || "Subject"} · {selectedBoard || selectedSubject?.board || "Board"} · {selectedUnit || "Paper"}
@@ -2865,7 +2903,9 @@ function GradeBoundariesPanel({ subjects = [] }) {
 
                 {!selectedUmsBoundary && !selectedThresholdBoundary ? (
                   <div className="mt-5 rounded-2xl border border-white/10 bg-white/[0.035] p-4 text-sm font-bold leading-6 text-white/48">
-                    No conversion data available yet for this paper.
+                    {isEdexcelBoundary
+                      ? "No Pearson Edexcel UMS data found for this unit."
+                      : "No conversion data available yet for this paper."}
                   </div>
                 ) : selectedThresholdBoundary ? (
                   <div className="mt-5 space-y-4">
@@ -2930,7 +2970,11 @@ function GradeBoundariesPanel({ subjects = [] }) {
                 ) : (
                   <div className="mt-5 space-y-4">
                     <p className="rounded-2xl border border-cyan-300/15 bg-cyan-300/10 p-3 text-xs font-bold leading-5 text-cyan-50/75">
-                      Uses the exact official raw mark to UMS conversion table.
+                      {isEdexcelUmsBoundary
+                        ? selectedUmsBoundary.sourceType === "edexcel-boundary-interpolation"
+                          ? "Uses official Edexcel grade-boundary anchors with raw-to-UMS interpolation."
+                          : "Uses exact Edexcel raw mark to UMS conversion data."
+                        : "Uses the exact official raw mark to UMS conversion table."}
                     </p>
                     <div className="grid grid-cols-2 gap-2 rounded-2xl border border-white/10 bg-white/[0.035] p-1">
                       <button
@@ -3002,7 +3046,9 @@ function GradeBoundariesPanel({ subjects = [] }) {
                         </div>
                         <p className="mt-3 text-sm font-bold leading-6 text-white/62">
                           {!umsResult
-                            ? "Enter a mark to calculate your exact UMS and grade."
+                            ? hasRawMarkInput || hasUmsMarkInput
+                              ? "No exact UMS value was found for that mark."
+                              : "Enter a mark to calculate your exact UMS and grade."
                             : umsResult.nextGrade
                               ? `Need ${umsResult.needed} more UMS for ${umsResult.nextGrade}.${nextUmsRawTarget !== null ? ` Minimum raw for ${umsResult.nextGrade}: ${nextUmsRawTarget}.` : ""}`
                               : "You are at the highest grade boundary."}
@@ -4543,6 +4589,8 @@ function PastPapersPanel({
   const [completionFilter, setCompletionFilter] = useState("All papers");
   const [annotationFilter, setAnnotationFilter] = useState("All markings");
   const [annotatedPaperIds, setAnnotatedPaperIds] = useState([]);
+  const [exportingPaperId, setExportingPaperId] = useState("");
+  const [exportError, setExportError] = useState("");
 
   const [savedPaperIds, setSavedPaperIds] = useState(() =>
     readStorage("alevel-dojo-favourites", [])
@@ -4765,6 +4813,53 @@ function PastPapersPanel({
     writeStorage("alevel-dojo-favourites", next);
   }
 
+  async function loadSavedPaperAnnotations(id) {
+    let savedPayload = null;
+
+    if (user?.id && id) {
+      const { data, error } = await supabase
+        .from("pdf_annotations")
+        .select("annotations")
+        .eq("user_id", user.id)
+        .eq("paper_id", id)
+        .eq("pdf_type", "question")
+        .maybeSingle();
+
+      if (!error && data?.annotations) savedPayload = data.annotations;
+    }
+
+    if (!savedPayload) {
+      try {
+        const saved = localStorage.getItem(`pdf-editor-${id}-question`);
+        savedPayload = saved ? JSON.parse(saved) : null;
+      } catch {}
+    }
+
+    return annotationsFromPayload(savedPayload);
+  }
+
+  async function exportCompletedPaper(paper) {
+    const id = paperId(paper);
+    const fileUrl = paper.questionPaper || paper.questionUrl || paper.pdf;
+    if (!fileUrl || exportingPaperId) return;
+
+    setExportError("");
+    setExportingPaperId(id);
+
+    try {
+      const savedAnnotations = await loadSavedPaperAnnotations(id);
+      await exportAnnotatedPdf({
+        fileUrl,
+        annotations: savedAnnotations,
+        fileName: paperExportFileName(paper),
+      });
+    } catch (error) {
+      setExportError(error?.message || "Export failed. Please try again.");
+    } finally {
+      setExportingPaperId("");
+    }
+  }
+
   function clearFilters() {
     setPaperSearch("");
     setSelectedQualification("All qualifications");
@@ -4837,6 +4932,15 @@ function PastPapersPanel({
                   {showInsert ? "Hide Insert" : "Show Insert"}
                 </button>
               )}
+              {activePreview.mode === "edit" && isPdfPaper(activePreview.paper) && (
+                <button
+                  onClick={() => exportCompletedPaper(activePreview.paper)}
+                  disabled={exportingPaperId === paperId(activePreview.paper)}
+                  className="rounded-xl border border-cyan-300/30 bg-cyan-300/10 px-4 py-2 text-sm font-black text-cyan-100 transition hover:bg-cyan-300/15 disabled:cursor-wait disabled:opacity-70"
+                >
+                  {exportingPaperId === paperId(activePreview.paper) ? "Exporting..." : "Export PDF"}
+                </button>
+              )}
                 <button
                     onClick={() => setMaximizedPreview(!maximizedPreview)}
                     className="rounded-xl bg-cyan-300 px-4 py-2 text-sm font-black text-slate-950"
@@ -4853,6 +4957,12 @@ function PastPapersPanel({
               </button>
             </div>
           </div>
+
+          {exportError && (
+            <div className="mb-3 rounded-2xl border border-rose-400/20 bg-rose-500/10 px-4 py-3 text-sm font-bold text-rose-100">
+              {exportError}
+            </div>
+          )}
 
             <div
             className={
@@ -4886,6 +4996,7 @@ function PastPapersPanel({
                     user={user}
                     paperId={paperId(activePreview.paper)}
                     pdfType="question"
+                    exportFileName={paperExportFileName(activePreview.paper)}
                   />
                 ) : (
                   <DocumentFrame
@@ -5014,6 +5125,12 @@ function PastPapersPanel({
             </div>
           </div>
 
+          {exportError && (
+            <div className="mb-4 rounded-2xl border border-rose-400/20 bg-rose-500/10 px-4 py-3 text-sm font-bold text-rose-100">
+              {exportError}
+            </div>
+          )}
+
           <div className="grid gap-3">
             {filteredPapers.length === 0 ? (
               <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-6 text-white/45">
@@ -5089,6 +5206,19 @@ function PastPapersPanel({
                         >
                           {isSaved ? "★ Saved" : "☆ Save"}
                         </button>
+                        {isCompleted && isPdfPaper(paper) && (
+                          <button
+                            onClick={() =>
+                              requireLogin(() => {
+                                exportCompletedPaper(paper);
+                              })
+                            }
+                            disabled={exportingPaperId === id}
+                            className="rounded-xl border border-cyan-300/25 bg-cyan-300/10 px-4 py-2 text-sm font-black text-cyan-100 hover:bg-cyan-300/15 disabled:cursor-wait disabled:opacity-70"
+                          >
+                            {exportingPaperId === id ? "Exporting..." : "Export PDF"}
+                          </button>
+                        )}
                       </div>
                     </div>
 
