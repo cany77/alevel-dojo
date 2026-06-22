@@ -7,6 +7,7 @@ import PdfViewer from "./PdfViewer";
 import Watermark from "./Watermark";
 import usePersistentState from "./usePersistentState";
 import { annotationsFromPayload, cleanPdfExportFilename, exportAnnotatedPdf } from "./pdfExport";
+import { subjectGroups } from "./data/subjects";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   BarChart3,
@@ -49,40 +50,6 @@ import {
   Star,
   Trophy,
 } from "lucide-react";
-
-const subjectGroups = [
-  {
-    board: "OxfordAQA",
-    description: "International AQA subjects",
-    subjects: [
-      { id: "physics", name: "Physics", detail: "Units 1–5, topic tests, practical skills" },
-      { id: "chemistry", name: "Chemistry", detail: "Physical, organic, inorganic, practical skills" },
-      { id: "biology", name: "Biology", detail: "Cells, molecules, genetics, physiology, ecology" },
-      { id: "psychology", name: "Psychology", detail: "Research methods, approaches, memory, attachment" },
-    ],
-  },
-  {
-    board: "Cambridge",
-    description: "CAIE subjects and variants",
-    subjects: [
-      { id: "computer-science", name: "Computer Science", detail: "Paper 1, Paper 2, variants 1–3" },
-      { id: "cambridge-maths", name: "Mathematics", detail: "Pure, statistics, mechanics" },
-      { id: "cambridge-physics", name: "Physics", detail: "AS/A Level structured papers" },
-    ],
-  },
-  {
-    board: "Edexcel",
-    description: "Pearson Edexcel subjects",
-    subjects: [
-      { id: "maths", name: "Mathematics", detail: "Pure 1–4, statistics, mechanics" },
-      { id: "further-maths", name: "Further Mathematics", detail: "Further pure, mechanics, statistics" },
-      { id: "statistics", name: "Statistics", detail: "Probability, distributions, hypothesis testing" },
-      { id: "mechanics", name: "Mechanics", detail: "Kinematics, forces, moments, projectiles" },
-      { id: "decisions", name: "Decisions", detail: "Decision mathematics, algorithms, networks" },
-      { id: "economics", name: "Economics", detail: "Markets, macroeconomics, global economy" },
-    ],
-  },
-];
 
 const boardColors = {
   OxfordAQA: {
@@ -1115,73 +1082,6 @@ function EmptySubjectRequest({ onOpenModal }) {
           Choose subjects
         </button>
       </div>
-    </div>
-  );
-}
-
-function SubjectSetupPage({ selectedIds, onToggle, onSave }) {
-  return (
-    <div className="min-h-screen bg-[#060816] text-white">
-      <Watermark />
-      <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_12%_8%,rgba(255,92,82,0.11),transparent_26%),radial-gradient(circle_at_88%_10%,rgba(124,58,237,0.14),transparent_28%),radial-gradient(circle_at_72%_86%,rgba(34,211,238,0.06),transparent_24%)]" />
-      <main className="relative z-10 mx-auto max-w-6xl px-6 py-10">
-        <Logo />
-        <section className="mt-14 rounded-3xl border border-white/10 bg-white/[0.04] p-6 shadow-2xl shadow-black/20 backdrop-blur-xl md:p-10">
-          <div className="max-w-3xl">
-            <p className="text-sm font-black uppercase tracking-[0.28em] text-cyan-200">First login setup</p>
-            <h1 className="mt-4 text-4xl font-black tracking-tight md:text-6xl">Choose your subjects</h1>
-            <p className="mt-5 text-base leading-8 text-white/55">
-              Select the subjects and boards you are currently studying. You can change them later.
-            </p>
-          </div>
-
-          <div className="mt-10 space-y-8">
-            {subjectGroups.map((group) => (
-              <section key={group.board}>
-                <div className="mb-4">
-                  <h2 className="text-xl font-black">{group.board}</h2>
-                  <p className="mt-1 text-sm text-white/45">{group.description}</p>
-                </div>
-                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                  {group.subjects.map((subject) => {
-                    const selected = selectedIds.includes(subject.id);
-                    return (
-                      <button
-                        key={subject.id}
-                        onClick={() => onToggle(subject.id)}
-                        className={`rounded-2xl border p-4 text-left transition-all duration-200 ease-out hover:-translate-y-0.5 ${
-                          selected
-                            ? "border-cyan-300/50 bg-cyan-300/10"
-                            : "border-white/10 bg-slate-950/55 hover:bg-white/[0.05]"
-                        }`}
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <h3 className="font-black">{subject.name}</h3>
-                          <span className={`rounded-full px-2 py-1 text-[10px] font-black ${selected ? "bg-cyan-300 text-slate-950" : "bg-white/[0.06] text-white/45"}`}>
-                            {selected ? "Selected" : group.board}
-                          </span>
-                        </div>
-                        <p className="mt-3 text-sm leading-6 text-white/45">{subject.detail}</p>
-                      </button>
-                    );
-                  })}
-                </div>
-              </section>
-            ))}
-          </div>
-
-          <div className="mt-9 flex flex-wrap items-center justify-between gap-4 border-t border-white/10 pt-6">
-            <p className="text-sm text-white/45">{selectedIds.length} subjects selected</p>
-            <button
-              onClick={onSave}
-              disabled={selectedIds.length === 0}
-              className="rounded-2xl bg-gradient-to-r from-rose-400 to-violet-500 px-6 py-3 text-sm font-black text-white shadow-lg shadow-rose-500/15 transition-all duration-200 ease-out hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-45"
-            >
-              Save subjects
-            </button>
-          </div>
-        </section>
-      </main>
     </div>
   );
 }

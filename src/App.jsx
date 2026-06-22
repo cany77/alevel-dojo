@@ -9,6 +9,9 @@ import LockedActionModal from "./LockedActionModal";
 import Dashboard from "./Dashboard";
 import PublicBrowsePage from "./PublicBrowsePage";
 import OnboardingFlow from "./OnboardingFlow";
+import ResetPasswordPage from "./ResetPasswordPage";
+import AuthCallbackPage from "./AuthCallbackPage";
+import { logAuthDiagnostic } from "./authDiagnostics";
 import PricingModal from "./PricingModal";
 import usePersistentState from "./usePersistentState";
 
@@ -54,6 +57,22 @@ const subjects = [
     popular: true,
   },
   {
+    id: "cambridge-mathematics",
+    name: "Mathematics",
+    board: "Cambridge",
+    description: "Cambridge Mathematics: pure mathematics, probability, statistics, and mechanics.",
+    topics: ["Pure mathematics", "Algebra", "Trigonometry", "Calculus", "Probability", "Statistics", "Mechanics"],
+    popular: false,
+  },
+  {
+    id: "cambridge-physics",
+    name: "Physics",
+    board: "Cambridge",
+    description: "Cambridge Physics: AS and A Level structured papers, practical skills, and exam practice.",
+    topics: ["Mechanics", "Waves", "Electricity", "Fields", "Thermal physics", "Nuclear physics", "Practical skills"],
+    popular: false,
+  },
+  {
     id: "maths",
     name: "Mathematics",
     board: "Edexcel",
@@ -83,6 +102,22 @@ const subjects = [
     board: "Edexcel",
     description: "Edexcel Mechanics: Mechanics 1–2, forces, kinematics, moments, projectiles, energy, and momentum.",
     topics: ["Kinematics", "Forces", "Newton’s laws", "Moments", "Projectiles", "Work and energy", "Momentum"],
+    popular: false,
+  },
+  {
+    id: "decisions",
+    name: "Decisions",
+    board: "Edexcel",
+    description: "Edexcel Decision Mathematics: algorithms, networks, graph theory, and linear programming.",
+    topics: ["Algorithms", "Graphs", "Networks", "Critical path analysis", "Linear programming", "Game theory"],
+    popular: false,
+  },
+  {
+    id: "economics",
+    name: "Economics",
+    board: "Edexcel",
+    description: "Edexcel Economics: markets, business behaviour, macroeconomics, and the global economy.",
+    topics: ["Markets", "Market failure", "Business growth", "Macroeconomics", "Global economy", "Development"],
     popular: false,
   },
 ];
@@ -198,6 +233,12 @@ export default function ALevelDojo() {
   const [profile, setProfile] = useState(null);
   const [profileLoading, setProfileLoading] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
+  const [isPasswordRecovery, setIsPasswordRecovery] = useState(
+    () => window.location.pathname === "/reset-password"
+  );
+  const [isAuthCallback, setIsAuthCallback] = useState(
+    () => window.location.pathname === "/auth/callback"
+  );
   async function loadCompletedPapers(userId) {
   const { data, error } = await supabase
     .from("completed_papers")
@@ -297,8 +338,15 @@ async function loadProfile(currentUser) {
 
   const {
     data: { subscription },
-  } = supabase.auth.onAuthStateChange((_event, session) => {
+  } = supabase.auth.onAuthStateChange((event, session) => {
     const currentUser = session?.user ?? null;
+
+    if (event === "PASSWORD_RECOVERY") {
+      setIsPasswordRecovery(true);
+      if (window.location.pathname !== "/reset-password") {
+        window.history.replaceState({}, "", "/reset-password");
+      }
+    }
 
     setUser(currentUser);
 
@@ -321,25 +369,43 @@ async function loadProfile(currentUser) {
 
 
   async function signUp(name = "") {
+    const emailRedirectTo = `${window.location.origin}/auth/callback`;
+    logAuthDiagnostic("signup requested", {
+      origin: window.location.origin,
+      redirectUrl: emailRedirectTo,
+      emailConfirmationExpected: true,
+    });
+
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
         data: {
           full_name: name,
+          display_name: name,
         },
+        emailRedirectTo,
       },
     });
 
+    logAuthDiagnostic("signup response", {
+      hasError: Boolean(error),
+      errorMessage: error?.message || null,
+      userExists: Boolean(data?.user),
+      sessionExists: Boolean(data?.session),
+      confirmationRequired: Boolean(data?.user && !data?.session),
+      redirectUrl: emailRedirectTo,
+    });
+
     if (error) {
-      alert(error.message);
-      return;
+      return { ok: false, error: "We could not create your account. Please try again." };
     }
 
-    if (data.user) {
+    if (data.session?.user) {
+      const authenticatedUser = data.session.user;
       const signupProfile = {
-        id: data.user.id,
-        email: data.user.email,
+        id: authenticatedUser.id,
+        email: authenticatedUser.email,
         full_name: name,
         name,
         subjects: [],
@@ -358,14 +424,20 @@ async function loadProfile(currentUser) {
         console.error(profileError);
       }
 
-      setUser(data.user);
+      setUser(authenticatedUser);
       setProfile(createdProfile || signupProfile);
+      setPage("library");
+      setShowAuthModal(false);
+      setEmail("");
+      setPassword("");
+      return { ok: true, requiresConfirmation: false };
+    } else {
+      setUser(null);
+      setProfile(null);
+      setPage("home");
+      setPassword("");
+      return { ok: true, requiresConfirmation: true, email: data.user?.email || email };
     }
-
-    setShowAuthModal(false);
-    setPage("library");
-    setEmail("");
-    setPassword("");
   }
 
 async function signIn() {
@@ -1132,6 +1204,52 @@ function goHomeSection(sectionId) {
   window.setTimeout(() => {
     document.getElementById(sectionId)?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, 0);
+}
+
+if (isPasswordRecovery) {
+  return (
+    <ResetPasswordPage
+      onComplete={() => {
+        setIsPasswordRecovery(false);
+        window.history.replaceState({}, "", "/");
+        setPassword("");
+        setPage("library");
+        window.scrollTo(0, 0);
+      }}
+      onBackToSignIn={async () => {
+        await supabase.auth.signOut();
+        setIsPasswordRecovery(false);
+        window.history.replaceState({}, "", "/");
+        setPage("home");
+        setShowAuthModal(true);
+      }}
+    />
+  );
+}
+
+if (isAuthCallback) {
+  return (
+    <AuthCallbackPage
+      onComplete={async (confirmedUser) => {
+        if (confirmedUser) {
+          setUser(confirmedUser);
+          await loadProfile(confirmedUser);
+          await loadCompletedPapers(confirmedUser.id);
+        }
+        setIsAuthCallback(false);
+        window.history.replaceState({}, "", "/");
+        setPage("library");
+        window.scrollTo(0, 0);
+      }}
+      onBackToSignIn={async () => {
+        await supabase.auth.signOut();
+        setIsAuthCallback(false);
+        window.history.replaceState({}, "", "/");
+        setPage("home");
+        setShowAuthModal(true);
+      }}
+    />
+  );
 }
 
 if (page === "home") {

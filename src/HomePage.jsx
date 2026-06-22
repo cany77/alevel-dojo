@@ -14,7 +14,11 @@ import {
   Zap,
 } from "lucide-react";
 import Watermark from "./Watermark";
+import ContactForm from "./ContactForm";
 import { examDates } from "./data/examDates";
+import { supabase } from "./supabaseClient";
+import { logAuthDiagnostic } from "./authDiagnostics";
+import useResendCooldown from "./useResendCooldown";
 
 function examStartDate(exam) {
   const time = exam.time || "00:00";
@@ -98,6 +102,10 @@ function HomePageUpgradePreview({
   const [openFaq, setOpenFaq] = useState(0);
   const [authMode, setAuthMode] = useState("signin");
   const [name, setName] = useState("");
+  const [inlineAuthStatus, setInlineAuthStatus] = useState("idle");
+  const [inlineAuthMessage, setInlineAuthMessage] = useState("");
+  const [confirmationEmail, setConfirmationEmail] = useState("");
+  const { secondsRemaining, startCooldown, coolingDown } = useResendCooldown();
   const [now, setNow] = useState(() => new Date());
   const loggedIn = Boolean(user);
   const closestExam = useMemo(() => findClosestFutureExam(now), [now]);
@@ -122,6 +130,48 @@ function HomePageUpgradePreview({
 
   function scrollToSection(id) {
     document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  async function handleInlineAuth() {
+    if (authMode === "signin") {
+      await signIn();
+      return;
+    }
+
+    setInlineAuthStatus("loading");
+    setInlineAuthMessage("");
+    const result = await signUp(name);
+    if (!result?.ok) {
+      setInlineAuthStatus("error");
+      setInlineAuthMessage(result?.error || "Could not create your account.");
+      return;
+    }
+    if (result.requiresConfirmation) {
+      setConfirmationEmail(result.email || email.trim());
+      setInlineAuthStatus("confirmation");
+      setInlineAuthMessage("Check your email to confirm your account.");
+    }
+  }
+
+  async function resendInlineConfirmation() {
+    const targetEmail = confirmationEmail || email.trim();
+    if (coolingDown) return;
+    const emailRedirectTo = `${window.location.origin}/auth/callback`;
+    startCooldown();
+    setInlineAuthStatus("loading");
+    const { error } = await supabase.auth.resend({
+      type: "signup",
+      email: targetEmail,
+      options: { emailRedirectTo },
+    });
+    logAuthDiagnostic("inline confirmation resend response", {
+      hasError: Boolean(error),
+      errorMessage: error?.message || null,
+      origin: window.location.origin,
+      redirectUrl: emailRedirectTo,
+    });
+    setInlineAuthStatus(error ? "error" : "confirmation");
+    setInlineAuthMessage(error ? "We could not resend the email. Please wait and try again when the timer ends." : "Confirmation email resent. Check your inbox and spam.");
   }
 
   const boards = [
@@ -327,13 +377,7 @@ function HomePageUpgradePreview({
   type="password"
   placeholder="Password"
   className="mb-4 w-full rounded-2xl border border-white/15 bg-slate-950 px-4 py-4 text-white outline-none placeholder:text-white/30 focus:border-rose-300"
-/><button onClick={() => {
-  if (authMode === "signin") {
-    signIn();
-  } else {
-    signUp(name);
-  }
-}} className="w-full rounded-2xl bg-gradient-to-r from-rose-400 to-violet-500 px-5 py-4 font-black text-white shadow-lg shadow-violet-500/20">{authMode === "signin" ? "Sign in" : "Create account"}</button></>)}
+/><button type="button" disabled={inlineAuthStatus === "loading"} onClick={handleInlineAuth} className="w-full rounded-2xl bg-gradient-to-r from-rose-400 to-violet-500 px-5 py-4 font-black text-white shadow-lg shadow-violet-500/20 disabled:cursor-wait disabled:opacity-60">{inlineAuthStatus === "loading" ? "Please wait..." : authMode === "signin" ? "Sign in" : "Create account"}</button>{inlineAuthMessage && <p role="status" className={`mt-3 rounded-xl border p-3 text-sm ${inlineAuthStatus === "error" ? "border-rose-300/20 bg-rose-400/10 text-rose-200" : "border-cyan-300/20 bg-cyan-400/10 text-cyan-100"}`}>{inlineAuthMessage}</p>}{inlineAuthStatus === "confirmation" && <button type="button" disabled={coolingDown} onClick={resendInlineConfirmation} className="mt-3 w-full rounded-xl border border-cyan-300/25 bg-cyan-400/10 px-4 py-3 text-sm font-black text-cyan-100 hover:bg-cyan-400/15 disabled:cursor-wait disabled:opacity-60">{coolingDown ? `Resend again in ${secondsRemaining}s` : "Resend confirmation email"}</button>}</>)}
               </div>
             </div>
           </div>
@@ -372,6 +416,9 @@ function HomePageUpgradePreview({
               <button onClick={() => onOpenLegal("terms")} className="text-left hover:text-white">Terms</button>
             </div>
           </div>
+        </div>
+        <div className="mx-auto mt-10 max-w-7xl">
+          <ContactForm />
         </div>
       </footer>
     </div>
