@@ -590,11 +590,111 @@ function getSubjectProgress(subject, completedPaperIds = []) {
   return Math.round((getCompletedCountForSubject(subject, completedPaperIds) / total) * 100);
 }
 
+function paperTitle(paper = {}) {
+  return paper.paper || paper.unit || paper.title || paper.name || "Paper";
+}
+
+function papersForActiveSubjects(activeSubjects = []) {
+  return activeSubjects.flatMap((subject) =>
+    sortPapersNewestFirst(getSubjectPapers(subject)).map((paper) => ({
+      ...paper,
+      subjectId: subject.id,
+      subjectProgress: subject.progress,
+    }))
+  );
+}
+
+function groupedDashboardPapers(activeSubjects = [], filter = () => true) {
+  return activeSubjects
+    .map((subject) => ({
+      subject,
+      papers: sortPapersNewestFirst(getSubjectPapers(subject))
+        .filter(filter)
+        .map((paper) => ({
+          ...paper,
+          subjectId: subject.id,
+          subjectProgress: subject.progress,
+        })),
+    }))
+    .filter((group) => group.papers.length > 0);
+}
+
+function roundRobinPapers(groups = [], limit = 8, excludedIds = new Set()) {
+  const picked = [];
+  const seen = new Set(excludedIds);
+  const maxLength = Math.max(0, ...groups.map((group) => group.papers.length));
+
+  for (let index = 0; index < maxLength && picked.length < limit; index += 1) {
+    for (const group of groups) {
+      const paper = group.papers[index];
+      if (!paper) continue;
+
+      const id = paperId(paper);
+      if (seen.has(id)) continue;
+
+      picked.push(paper);
+      seen.add(id);
+      if (picked.length >= limit) break;
+    }
+  }
+
+  return picked;
+}
+
+function getDashboardPaperLists(activeSubjects = [], completedPaperIds = [], savedPaperIds = [], upcomingExams = []) {
+  const completedSet = new Set(completedPaperIds);
+  const savedSet = new Set(savedPaperIds);
+  const upcomingKeys = new Set(
+    upcomingExams
+      .slice(0, 5)
+      .map((exam) => `${normalizeBoardName(exam.board)}|${normalizeSubjectName(exam.subject)}`)
+  );
+  const allSubjectPapers = papersForActiveSubjects(activeSubjects);
+  const subjectPriority = (subject) => {
+    const key = `${normalizeBoardName(subject.board)}|${normalizeSubjectName(subject.name)}`;
+    return upcomingKeys.has(key) ? 1 : 0;
+  };
+  const recommendedGroups = groupedDashboardPapers(activeSubjects)
+    .map((group) => ({
+      ...group,
+      papers: group.papers.sort((a, b) => {
+        const savedDiff = (savedSet.has(paperId(b)) ? 1 : 0) - (savedSet.has(paperId(a)) ? 1 : 0);
+        if (savedDiff !== 0) return savedDiff;
+        return sortPapersNewestFirst([a, b]).indexOf(a) - sortPapersNewestFirst([a, b]).indexOf(b);
+      }),
+    }))
+    .sort((a, b) => subjectPriority(b.subject) - subjectPriority(a.subject));
+  const continueGroups = groupedDashboardPapers(activeSubjects, (paper) => !completedSet.has(paperId(paper)))
+    .sort((a, b) => subjectPriority(b.subject) - subjectPriority(a.subject));
+
+  const recommended = roundRobinPapers(recommendedGroups, 8);
+  const recommendedIds = new Set(recommended.map((paper) => paperId(paper)));
+  const continueRevision = roundRobinPapers(continueGroups, 8, recommendedIds);
+  const continueFallback = continueRevision.length < 4
+    ? roundRobinPapers(continueGroups, 8)
+    : continueRevision;
+
+  return {
+    recommended,
+    continueRevision: continueFallback,
+    saved: roundRobinPapers(groupedDashboardPapers(activeSubjects, (paper) => savedSet.has(paperId(paper))), 8),
+  };
+}
+
 function daysUntil(date) {
   const today = new Date();
   const examDate = new Date(`${date}T00:00:00`);
   const diff = examDate.getTime() - today.setHours(0, 0, 0, 0);
   return Math.max(0, Math.ceil(diff / 86400000));
+}
+
+function formatDisplayDate(date) {
+  if (!date) return "Date TBC";
+  return new Date(`${date}T00:00:00`).toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
 }
 
 function normalizeSubjectName(value = "") {
@@ -1255,12 +1355,12 @@ function DashboardShellSidebar({
   );
 }
 
-function MetricCard({ label, value, detail, accent = "text-cyan-200" }) {
+function MetricCard({ label, value, detail, accent = "text-cyan-200", compact = false }) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-5">
-      <p className={`text-sm font-black ${accent}`}>{label}</p>
-      <p className="mt-2 text-2xl font-black text-white">{value}</p>
-      <p className="mt-1 text-sm text-white/40">{detail}</p>
+    <div className={`rounded-2xl border border-white/10 bg-white/[0.035] ${compact ? "p-3.5" : "p-5"}`}>
+      <p className={`${compact ? "text-xs" : "text-sm"} font-black ${accent}`}>{label}</p>
+      <p className={`${compact ? "mt-1 text-xl" : "mt-2 text-2xl"} font-black text-white`}>{value}</p>
+      <p className={`${compact ? "mt-0.5 text-xs" : "mt-1 text-sm"} text-white/40`}>{detail}</p>
     </div>
   );
 }
@@ -1499,18 +1599,46 @@ function DashboardHome({
   onSelectView,
   onOpenSubjectPicker,
   onOpenPricing,
+  paidAccess = false,
+  paperLists = { recommended: [], continueRevision: [], saved: [] },
+  onOpenPaperPreview = () => {},
+  onOpenPaperEdit = () => {},
+  onTogglePaperComplete = () => {},
+  completedPaperIds = [],
+  savedPaperIds = [],
   greeting,
   needsCambridgeZone = false,
   onOpenAllExams = () => {},
 }) {
+  const compactUpcomingExams = upcomingExams.slice(0, 5);
+
   return (
-    <>
-      <section className="mx-auto mb-5 max-w-6xl rounded-[1.5rem] border border-white/10 bg-white/[0.04] px-5 py-4 shadow-2xl shadow-black/10 backdrop-blur-xl md:px-6">
-        <p className="text-lg font-semibold tracking-tight text-cyan-100/75 md:text-xl">{greeting.greeting}</p>
-        <h1 className="mt-0.5 text-3xl font-black tracking-tight text-white md:text-4xl">{greeting.name}</h1>
+    <div className="space-y-5">
+      <section className="mx-auto max-w-6xl rounded-2xl border border-white/10 bg-white/[0.035] px-5 py-4 shadow-xl shadow-black/10 backdrop-blur-xl">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-sm font-semibold tracking-tight text-cyan-100/70">{greeting.greeting}</p>
+            <h1 className="mt-0.5 text-3xl font-black tracking-tight text-white">{greeting.name}</h1>
+          </div>
+          <button
+            type="button"
+            onClick={onOpenSubjectPicker}
+            className="w-fit rounded-full border border-cyan-300/20 bg-cyan-300/10 px-3.5 py-2 text-xs font-black text-cyan-100 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-cyan-300/15"
+          >
+            Change subjects
+          </button>
+        </div>
       </section>
 
-      <section className="mx-auto mb-7 max-w-6xl">
+      <section className="mx-auto grid max-w-6xl gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        <MetricCard label="Upcoming exams" value={upcomingExams.length} detail="In your calendar" compact />
+        <MetricCard label="Continue revision" value={`${stats.remainingPapers} left`} detail="Selected papers" accent="text-violet-200" compact />
+        <MetricCard label="Mistakes to review" value={stats.mistakesOpen} detail="Unfixed" accent="text-rose-200" compact />
+        <MetricCard label="Completed papers" value={stats.completedCount} detail="Done" accent="text-emerald-200" compact />
+        <MetricCard label="Saved papers" value={stats.savedCount} detail="Bookmarked" accent="text-yellow-200" compact />
+      </section>
+
+      <section className="mx-auto max-w-6xl">
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <h2 className="text-2xl font-black tracking-tight text-white">My subjects</h2>
@@ -1525,14 +1653,14 @@ function DashboardHome({
           </button>
         </div>
         {activeSubjects.length === 0 ? (
-          <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-6">
+          <div className="rounded-2xl border border-white/10 bg-slate-950/45 p-5">
             <p className="font-black text-white">No subjects selected yet.</p>
-            <p className="mt-2 text-sm text-white/45">Go to settings to add subjects.</p>
+            <p className="mt-1 text-sm text-white/45">Choose subjects to personalise papers, exams, and revision.</p>
             <button
-              onClick={() => onSelectView("settings")}
-              className="mt-4 rounded-2xl border border-white/10 bg-white/[0.05] px-4 py-2.5 text-sm font-black text-white/75 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-white/[0.08]"
+              onClick={onOpenSubjectPicker}
+              className="mt-4 rounded-2xl border border-cyan-300/20 bg-cyan-300/10 px-4 py-2.5 text-sm font-black text-cyan-100 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-cyan-300/15"
             >
-              Open settings
+              Choose subjects
             </button>
           </div>
         ) : (
@@ -1544,24 +1672,283 @@ function DashboardHome({
         )}
       </section>
 
-      <section className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-        <MetricCard label="Upcoming exams" value={upcomingExams.length} detail="Personal timetable" />
-        <MetricCard label="Continue revision" value={`${stats.remainingPapers} left`} detail="Uncompleted selected papers" accent="text-violet-200" />
-        <MetricCard label="Mistakes to review" value={stats.mistakesOpen} detail="Unfixed questions" accent="text-rose-200" />
-        <MetricCard label="Completed papers" value={stats.completedCount} detail="Marked complete" accent="text-emerald-200" />
-        <MetricCard label="Saved papers" value={stats.savedCount} detail="Ready to revisit" accent="text-yellow-200" />
+      <DashboardPaperSection
+        title="Recommended papers"
+        subtitle="Picked from your selected subjects, with upcoming-exam subjects first."
+        papers={paperLists.recommended}
+        emptyText="No recommended papers yet. Add subjects or papers to get started."
+        completedPaperIds={completedPaperIds}
+        savedPaperIds={savedPaperIds}
+        onEdit={onOpenPaperEdit}
+        onToggleComplete={onTogglePaperComplete}
+      />
+
+      <DashboardPaperSection
+        title="Continue revision"
+        subtitle="Uncompleted papers from your subjects."
+        papers={paperLists.continueRevision}
+        emptyText="You are caught up on selected papers."
+        completedPaperIds={completedPaperIds}
+        savedPaperIds={savedPaperIds}
+        onEdit={onOpenPaperEdit}
+        onToggleComplete={onTogglePaperComplete}
+      />
+
+      {paperLists.saved.length > 0 && (
+        <DashboardPaperSection
+          title="Saved papers"
+          subtitle="Quickly return to the papers you bookmarked."
+          papers={paperLists.saved}
+          emptyText=""
+          completedPaperIds={completedPaperIds}
+          savedPaperIds={savedPaperIds}
+          onEdit={onOpenPaperEdit}
+          onToggleComplete={onTogglePaperComplete}
+        />
+      )}
+
+      <section className="mx-auto max-w-6xl rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+        <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-lg font-black text-white">Upcoming exams</h2>
+            <p className="mt-0.5 text-xs text-white/42">Next 3-5 events for your selected subjects.</p>
+          </div>
+          <button
+            onClick={onOpenAllExams}
+            className="w-fit rounded-full border border-cyan-300/20 bg-cyan-300/10 px-3 py-1.5 text-xs font-black text-cyan-100 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-cyan-300/15"
+          >
+            Open full calendar
+          </button>
+        </div>
+        {needsCambridgeZone && (
+          <p className="mb-3 rounded-2xl border border-cyan-300/15 bg-cyan-300/10 p-3 text-xs font-bold leading-5 text-cyan-50/80">
+            Select your Cambridge exam zone in settings to see accurate Cambridge dates.
+          </p>
+        )}
+        <div className="grid gap-2">
+          {compactUpcomingExams.length === 0 ? (
+            <p className="rounded-2xl border border-white/10 bg-slate-950/45 p-4 text-sm text-white/45">
+              No upcoming exams found for your selected subjects.
+            </p>
+          ) : (
+            compactUpcomingExams.map((exam) => (
+              <div key={exam.id || `${exam.board}-${exam.subject}-${exam.paper || exam.unit}-${exam.date}`} className="flex flex-col gap-2 rounded-2xl border border-white/10 bg-slate-950/45 p-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-black text-white">{exam.subject} · {exam.paper || exam.unit || exam.title || "Exam"}</p>
+                  <p className="mt-0.5 text-xs font-bold text-white/42">{exam.board}{exam.zone ? ` · ${exam.zone}` : ""} · {formatDisplayDate(exam.date)} {exam.time ? `· ${exam.time}` : ""}</p>
+                </div>
+                <span className="w-fit rounded-full border border-cyan-300/20 bg-cyan-300/10 px-3 py-1 text-xs font-black text-cyan-100">
+                  {daysUntil(exam.date)}d
+                </span>
+              </div>
+            ))
+          )}
+        </div>
       </section>
 
-      <section className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
-        <ExamCalendarPanel
-          exams={upcomingExams.slice(0, 4)}
-          compact
-          needsCambridgeZone={needsCambridgeZone}
-          onOpenAllExams={onOpenAllExams}
-        />
-        <AiTutorPanel onUpgrade={onOpenPricing} compact />
+      <section className="mx-auto max-w-6xl">
+        <SmallAiTutorCard onUpgrade={onOpenPricing} paidAccess={paidAccess} />
       </section>
-    </>
+    </div>
+  );
+}
+
+function DashboardPaperSection({
+  title,
+  subtitle,
+  papers = [],
+  emptyText,
+  completedPaperIds = [],
+  savedPaperIds = [],
+  onEdit,
+  onToggleComplete,
+}) {
+  const carouselRef = useRef(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+
+  function updateScrollButtons() {
+    const carousel = carouselRef.current;
+    if (!carousel) return;
+    const maxScroll = carousel.scrollWidth - carousel.clientWidth;
+    setCanScrollLeft(carousel.scrollLeft > 4);
+    setCanScrollRight(carousel.scrollLeft < maxScroll - 4);
+  }
+
+  useEffect(() => {
+    updateScrollButtons();
+    const carousel = carouselRef.current;
+    if (!carousel) return;
+
+    const handleResize = () => updateScrollButtons();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, [papers.length]);
+
+  function scrollCarousel(direction) {
+    const carousel = carouselRef.current;
+    if (!carousel) return;
+    carousel.scrollBy({
+      left: direction * Math.min(carousel.clientWidth * 0.85, 620),
+      behavior: "smooth",
+    });
+    window.setTimeout(updateScrollButtons, 320);
+  }
+
+  return (
+    <section className="mx-auto max-w-6xl rounded-2xl border border-white/10 bg-white/[0.025] p-4">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-black text-white">{title}</h2>
+          {subtitle && <p className="mt-0.5 text-xs text-white/42">{subtitle}</p>}
+        </div>
+        {papers.length > 0 && (
+          <div className="flex shrink-0 items-center gap-2">
+            <button
+              type="button"
+              onClick={() => scrollCarousel(-1)}
+              disabled={!canScrollLeft}
+              aria-label={`Scroll ${title} left`}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/[0.045] text-white/55 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:border-cyan-300/25 hover:bg-cyan-300/10 hover:text-cyan-100 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:translate-y-0 disabled:hover:border-white/10 disabled:hover:bg-white/[0.045] disabled:hover:text-white/55"
+            >
+              <ArrowLeft size={15} />
+            </button>
+            <button
+              type="button"
+              onClick={() => scrollCarousel(1)}
+              disabled={!canScrollRight}
+              aria-label={`Scroll ${title} right`}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/[0.045] text-white/55 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:border-cyan-300/25 hover:bg-cyan-300/10 hover:text-cyan-100 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:translate-y-0 disabled:hover:border-white/10 disabled:hover:bg-white/[0.045] disabled:hover:text-white/55"
+            >
+              <ChevronRight size={16} />
+            </button>
+          </div>
+        )}
+      </div>
+      {papers.length === 0 ? (
+        <p className="rounded-2xl border border-white/10 bg-slate-950/45 p-4 text-sm text-white/45">{emptyText}</p>
+      ) : (
+        <div
+          ref={carouselRef}
+          onScroll={updateScrollButtons}
+          className="scrollbar-hidden flex snap-x snap-mandatory gap-4 overflow-x-auto scroll-smooth pb-2 pr-2"
+        >
+          {papers.map((paper) => {
+            const id = paperId(paper);
+            return (
+              <DashboardPaperCard
+                key={`${paper.subjectId}-${id}`}
+                paper={paper}
+                completed={completedPaperIds.includes(id)}
+                saved={savedPaperIds.includes(id)}
+                onEdit={() => onEdit(paper.subjectId, paper)}
+                onToggleComplete={() => onToggleComplete(paper)}
+              />
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function DashboardPaperCard({ paper, completed, saved, onEdit, onToggleComplete }) {
+  const visual = subjectVisuals[normalizeSubjectName(paper.subject)] || defaultSubjectVisual;
+  const paperInsert = getPaperInsert(paper, paper.subject, paper.board);
+  const hasFormulaBook = paperInsert?.label?.toLowerCase().includes("formula");
+  const hasInsert = paperInsert && !hasFormulaBook;
+  const editLabel = isPdfPaper(paper) ? "PDF Edit" : "View Paper";
+
+  return (
+    <article className="relative flex min-h-[190px] w-[230px] shrink-0 snap-start flex-col justify-between overflow-hidden rounded-2xl border border-white/10 bg-slate-950/40 p-4 text-left transition-all duration-200 ease-out hover:-translate-y-0.5 hover:border-cyan-300/25 hover:bg-white/[0.055] hover:shadow-[0_0_24px_rgba(34,211,238,0.08)]">
+      <FileText
+        className="pointer-events-none absolute -right-2 top-3 text-cyan-200/[0.07]"
+        size={76}
+      />
+      <div className="relative z-10">
+        <div className={`mb-3 inline-flex rounded-2xl border p-3 ${visual.soft}`}>
+          <FileText size={25} />
+        </div>
+        <p className="line-clamp-2 text-sm font-black text-white">
+          {paperCardTitle(paper, paperTitle(paper))}
+        </p>
+        <p className="mt-1 text-xs font-bold text-white/48">
+          {paperSessionLabel(paper) || "Session"}
+        </p>
+        <p className="mt-0.5 truncate text-xs text-white/32">
+          {paper.subject} · {paper.board}
+        </p>
+      </div>
+
+      <div className="relative z-10 mt-3 flex flex-wrap gap-1.5">
+        <span className="rounded-full border border-white/10 bg-white/[0.04] px-2 py-1 text-[9px] font-black uppercase tracking-[0.1em] text-white/50">
+          Question paper
+        </span>
+        {paper.variant && (
+          <span className="rounded-full border border-cyan-300/20 bg-cyan-300/10 px-2 py-1 text-[9px] font-black uppercase tracking-[0.1em] text-cyan-100">
+            {paper.variant}
+          </span>
+        )}
+        {hasFormulaBook && (
+          <span className="rounded-full border border-violet-300/20 bg-violet-300/10 px-2 py-1 text-[9px] font-black uppercase tracking-[0.1em] text-violet-100">
+            Formula book
+          </span>
+        )}
+        {hasInsert && (
+          <span className="rounded-full border border-violet-300/20 bg-violet-300/10 px-2 py-1 text-[9px] font-black uppercase tracking-[0.1em] text-violet-100">
+            Insert
+          </span>
+        )}
+        {completed && (
+          <span className="rounded-full border border-emerald-300/20 bg-emerald-300/10 px-2 py-1 text-[9px] font-black uppercase tracking-[0.1em] text-emerald-100">
+            Completed
+          </span>
+        )}
+        {saved && (
+          <span className="rounded-full border border-amber-300/20 bg-amber-300/10 px-2 py-1 text-[9px] font-black uppercase tracking-[0.1em] text-amber-100">
+            Saved
+          </span>
+        )}
+
+        <div className="mt-2 grid w-full gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              if (isPdfPaper(paper)) onEdit();
+              else openPaperFile(paper);
+            }}
+            className={`inline-flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r ${visual.accent} px-3 py-2 text-xs font-black text-white shadow-lg ${visual.glow} transition-all duration-200 ease-out hover:-translate-y-0.5 hover:brightness-110`}
+          >
+            {isPdfPaper(paper) ? <Edit3 size={14} /> : <Eye size={14} />}
+            {editLabel}
+          </button>
+        </div>
+        <button type="button" onClick={onToggleComplete} className={`mt-1 inline-flex w-full items-center justify-center rounded-xl border px-3 py-2 text-xs font-black transition-all duration-200 ease-out hover:-translate-y-0.5 ${completed ? "border-emerald-300/25 bg-emerald-300/10 text-emerald-100" : "border-white/10 bg-white/[0.045] text-white/60 hover:bg-white/[0.08] hover:text-white"}`}>
+            {completed ? "Completed" : "Mark complete"}
+          </button>
+      </div>
+    </article>
+  );
+}
+
+function SmallAiTutorCard({ onUpgrade, paidAccess = false }) {
+  const locked = !paidAccess;
+  return (
+    <section className={`rounded-2xl border p-4 shadow-lg ${locked ? "border-violet-300/15 bg-violet-400/10 shadow-violet-500/10" : "border-cyan-300/20 bg-cyan-300/10 shadow-cyan-500/10"}`}>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className={`text-xs font-black uppercase tracking-[0.16em] ${locked ? "text-violet-100/55" : "text-cyan-100/65"}`}>{locked ? "Premium" : "Unlocked"}</p>
+          <h2 className="mt-1 text-lg font-black text-white">AI Tutor</h2>
+          <p className="mt-1 text-sm leading-6 text-white/48">{locked ? "Upgrade to unlock personalised help for weak topics and paper practice." : "Premium access is active. Your AI tutor is ready when you are."}</p>
+        </div>
+        {locked ? <Lock className="shrink-0 text-violet-200" size={20} /> : <Check className="shrink-0 text-cyan-200" size={20} />}
+      </div>
+      {locked && (
+        <button onClick={onUpgrade} className="mt-4 rounded-full bg-gradient-to-r from-rose-400 to-violet-500 px-4 py-2 text-xs font-black text-white transition-all duration-200 ease-out hover:-translate-y-0.5">
+          Unlock AI Tutor
+        </button>
+      )}
+    </section>
   );
 }
 
@@ -3212,15 +3599,15 @@ function MistakesTrackerPanel({ mistakes, setMistakes, subjects = [], onAwardXP 
   );
 }
 
-function AiTutorPanel({ onUpgrade, compact = false }) {
+function AiTutorPanel({ onUpgrade, compact = false, paidAccess = false }) {
   return (
     <section className="rounded-3xl border border-white/10 bg-white/[0.035] p-6">
       <div className="flex items-start justify-between gap-4">
         <div>
           <h2 className="text-xl font-black text-white">Personalized AI tutor</h2>
-          <p className="mt-1 text-sm text-white/42">Locked on the Free plan for now.</p>
+          <p className="mt-1 text-sm text-white/42">{paidAccess ? "Premium access is active." : "Locked on the Free plan for now."}</p>
         </div>
-        <Lock className="text-violet-200" size={22} />
+        {paidAccess ? <Check className="text-cyan-200" size={22} /> : <Lock className="text-violet-200" size={22} />}
       </div>
       <div className={`mt-5 grid gap-3 ${compact ? "" : "md:grid-cols-2"}`}>
         {[
@@ -3243,9 +3630,11 @@ function AiTutorPanel({ onUpgrade, compact = false }) {
           </div>
         ))}
       </div>
-      <button onClick={onUpgrade} className="mt-5 rounded-2xl bg-gradient-to-r from-rose-400 to-violet-500 px-5 py-3 text-sm font-black text-white">
-        Upgrade for AI tutor
-      </button>
+      {!paidAccess && (
+        <button onClick={onUpgrade} className="mt-5 rounded-2xl bg-gradient-to-r from-rose-400 to-violet-500 px-5 py-3 text-sm font-black text-white">
+          Upgrade for AI tutor
+        </button>
+      )}
     </section>
   );
 }
@@ -5931,6 +6320,7 @@ function SubjectPagePreview({
   user,
   onRequireLogin,
   onOpenPricing,
+  paidAccess = false,
   initialSection = "overview",
   persistedPreview = null,
   onPreviewChange = () => {},
@@ -6042,7 +6432,7 @@ function SubjectPagePreview({
         ) : section === "mock" ? (
           <MockModePanel subject={subject} onAwardXP={onAwardXP} />
         ) : section === "ai" ? (
-          <AiTutorPanel onUpgrade={onOpenPricing} />
+          <AiTutorPanel onUpgrade={onOpenPricing} paidAccess={paidAccess} />
         ) : (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {cards.map(([Icon, title, text, id]) => (
@@ -6087,6 +6477,8 @@ export default function Dashboard({
   onSaveProfile = async () => {},
   onRequireLogin = () => {},
   onOpenPricing = () => {},
+  paidAccess = false,
+  subscription = null,
   onGoHome = () => {},
 }) {
   const subjects = allSubjects();
@@ -6361,6 +6753,13 @@ export default function Dashboard({
     selectedSubjects: activeSubjects,
     cambridgeZone,
   });
+  const dashboardSavedPaperIds = readStorage("alevel-dojo-favourites", []);
+  const dashboardPaperLists = getDashboardPaperLists(
+    activeSubjects,
+    completedPaperIds,
+    dashboardSavedPaperIds,
+    upcomingExams
+  );
   const sidebarVisible = sidebarPinnedOpen || sidebarPreviewOpen;
   const sidebarAffectsLayout = sidebarPinnedOpen;
   const allCalendarEvents = [
@@ -6608,7 +7007,7 @@ export default function Dashboard({
     setActiveView(section === "topictests" ? "topictests" : section === "pastpapers" ? "pastpapers" : "subject");
   }
 
-  function openPaperFromLanding(subjectId, paper) {
+  function openPaperFromLanding(subjectId, paper, mode = "edit") {
     if (!subjectId || !paper) return;
     setActiveSubjectId(subjectId);
     setSubjectSection("pastpapers");
@@ -6617,12 +7016,43 @@ export default function Dashboard({
       openedPaper: {
         type: "pastPaper",
         paperId: paperId(paper),
-        mode: "edit",
+        mode,
         showMarkScheme: false,
         showInsert: false,
       },
       openedTopicTest: null,
     });
+  }
+
+  async function toggleDashboardPaperComplete(paper) {
+    const id = paperId(paper);
+    const exists = completedPaperIds.includes(id);
+    const next = exists
+      ? completedPaperIds.filter((item) => item !== id)
+      : [...completedPaperIds, id];
+
+    setCompletedPaperIds(next);
+    writeStorage("alevel-dojo-completed-papers", next);
+
+    if (!user) return;
+
+    if (exists) {
+      await supabase
+        .from("completed_papers")
+        .delete()
+        .eq("user_id", user.id)
+        .eq("paper_id", id);
+    } else {
+      const { error } = await supabase.from("completed_papers").insert({
+        user_id: user.id,
+        paper_id: id,
+      });
+      if (error) {
+        console.error(error);
+        return;
+      }
+      awardXP("complete_paper", 50, { key: `paper-${id}`, paperId: id, subject: paper.subject, board: paper.board });
+    }
   }
 
   function openTopicTestFromLanding(subjectId, test) {
@@ -6991,6 +7421,7 @@ export default function Dashboard({
               user={user}
               onRequireLogin={onRequireLogin}
               onOpenPricing={onOpenPricing}
+              paidAccess={paidAccess}
               initialSection={subjectSection}
               persistedPreview={
                 subjectSection === "topictests"
@@ -7031,7 +7462,7 @@ export default function Dashboard({
           ) : activeView === "boundaries" ? (
             <GradeBoundariesPanel subjects={activeSubjects} />
           ) : activeView === "ai" ? (
-            <AiTutorPanel onUpgrade={onOpenPricing} />
+            <AiTutorPanel onUpgrade={onOpenPricing} paidAccess={paidAccess} />
           ) : activeView === "settings" ? (
             <ProfileSettingsPanel
               profile={dashboardProfile}
@@ -7057,6 +7488,13 @@ export default function Dashboard({
               upcomingExams={upcomingExams}
               onSelectView={selectView}
               onOpenPricing={onOpenPricing}
+              paidAccess={paidAccess}
+              paperLists={dashboardPaperLists}
+              onOpenPaperPreview={(subjectId, paper) => openPaperFromLanding(subjectId, paper, "preview")}
+              onOpenPaperEdit={(subjectId, paper) => openPaperFromLanding(subjectId, paper, "edit")}
+              onTogglePaperComplete={toggleDashboardPaperComplete}
+              completedPaperIds={completedPaperIds}
+              savedPaperIds={dashboardSavedPaperIds}
               greeting={dashboardGreeting}
               needsCambridgeZone={needsCambridgeZone}
               onOpenSubjectPicker={openSubjectPicker}

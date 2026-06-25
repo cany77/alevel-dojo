@@ -13,6 +13,7 @@ import ResetPasswordPage from "./ResetPasswordPage";
 import AuthCallbackPage from "./AuthCallbackPage";
 import { logAuthDiagnostic } from "./authDiagnostics";
 import PricingModal from "./PricingModal";
+import { hasPaidAccess } from "./subscriptionAccess";
 import usePersistentState from "./usePersistentState";
 
 const subjects = [
@@ -231,6 +232,7 @@ export default function ALevelDojo() {
   const [legalModal, setLegalModal] = useState(null);
   const [showFloatingMock, setShowFloatingMock] = useState(false);
   const [profile, setProfile] = useState(null);
+  const [subscription, setSubscription] = useState(null);
   const [profileLoading, setProfileLoading] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
   const [isPasswordRecovery, setIsPasswordRecovery] = useState(
@@ -258,10 +260,32 @@ async function logOut() {
 
   setUser(null);
   setProfile(null);
+  setSubscription(null);
   setShowAuthModal(false);
   setShowLockedModal(false);
   clearSavedDashboardState();
   setPage("home");
+}
+async function loadSubscription(currentUser) {
+  if (!currentUser) {
+    setSubscription(null);
+    return null;
+  }
+
+  const { data, error } = await supabase
+    .from("user_subscriptions")
+    .select("*")
+    .eq("user_id", currentUser.id)
+    .maybeSingle();
+
+  if (error) {
+    console.error(error);
+    setSubscription(null);
+    return null;
+  }
+
+  setSubscription(data || null);
+  return data || null;
 }
 async function loadProfile(currentUser) {
   if (!currentUser) {
@@ -326,6 +350,7 @@ async function loadProfile(currentUser) {
 
     if (currentUser) {
       loadProfile(currentUser);
+      loadSubscription(currentUser);
       loadCompletedPapers(currentUser.id);
     } else {
       setPage("home");
@@ -352,9 +377,11 @@ async function loadProfile(currentUser) {
 
     if (currentUser) {
       loadProfile(currentUser);
+      loadSubscription(currentUser);
       loadCompletedPapers(currentUser.id);
     } else {
       setProfile(null);
+      setSubscription(null);
       clearSavedDashboardState();
       setPage("home");
     }
@@ -366,6 +393,19 @@ async function loadProfile(currentUser) {
     subscription.unsubscribe();
   };
 }, []);
+
+useEffect(() => {
+  const params = new URLSearchParams(window.location.search);
+  const checkout = params.get("checkout");
+  if (!checkout) return;
+
+  if (checkout === "success" && user) {
+    loadSubscription(user);
+    setShowPricingModal(true);
+  }
+
+  window.history.replaceState({}, "", window.location.pathname || "/");
+}, [user]);
 
 
   async function signUp(name = "") {
@@ -1305,6 +1345,8 @@ if (page === "home") {
         onClose={() => setShowPricingModal(false)}
         onOpenAuth={() => setShowAuthModal(true)}
         user={user}
+        subscription={subscription}
+        onSubscriptionRefresh={() => user && loadSubscription(user)}
       />
       <LegalModal type={legalModal} onClose={() => setLegalModal(null)} />
             <LockedActionModal
@@ -1361,6 +1403,8 @@ if (page === "publicBrowse") {
         onClose={() => setShowPricingModal(false)}
         onOpenAuth={() => setShowAuthModal(true)}
         user={user}
+        subscription={subscription}
+        onSubscriptionRefresh={() => user && loadSubscription(user)}
       />
       <LegalModal type={legalModal} onClose={() => setLegalModal(null)} />
     </>
@@ -1396,6 +1440,8 @@ if (page === "library") {
         onSaveProfile={completeOnboarding}
         onRequireLogin={() => setShowLockedModal(true)}
         onOpenPricing={() => setShowPricingModal(true)}
+        paidAccess={hasPaidAccess(subscription)}
+        subscription={subscription}
         onGoHome={() => {
           setPage("home");
           window.scrollTo(0, 0);
@@ -1423,6 +1469,8 @@ if (page === "library") {
         onClose={() => setShowPricingModal(false)}
         onOpenAuth={() => setShowAuthModal(true)}
         user={user}
+        subscription={subscription}
+        onSubscriptionRefresh={() => user && loadSubscription(user)}
       />
       <LegalModal type={legalModal} onClose={() => setLegalModal(null)} />
     </>
