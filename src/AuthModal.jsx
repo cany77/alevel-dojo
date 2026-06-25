@@ -3,10 +3,12 @@ import { MailCheck } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import { logAuthDiagnostic } from "./authDiagnostics";
 import useResendCooldown from "./useResendCooldown";
+import PasswordInput from "./PasswordInput";
 
 export default function AuthModal({ showAuthModal, setShowAuthModal, email, setEmail, password, setPassword, signIn, signUp }) {
   const [mode, setMode] = useState("signin");
   const [name, setName] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [confirmationEmail, setConfirmationEmail] = useState("");
   const [shouldRender, setShouldRender] = useState(showAuthModal);
   const [visible, setVisible] = useState(false);
@@ -35,6 +37,7 @@ export default function AuthModal({ showAuthModal, setShowAuthModal, email, setE
 
   function changeMode(nextMode) {
     setMode(nextMode);
+    setConfirmPassword("");
     setAuthStatus("idle");
     setAuthMessage("");
   }
@@ -51,6 +54,12 @@ export default function AuthModal({ showAuthModal, setShowAuthModal, email, setE
       });
       setAuthStatus(error ? "error" : "success");
       setAuthMessage(error ? error.message : "Check your email for a secure reset link.");
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      setAuthStatus("error");
+      setAuthMessage("Passwords do not match.");
       return;
     }
 
@@ -72,7 +81,13 @@ export default function AuthModal({ showAuthModal, setShowAuthModal, email, setE
       return;
     }
 
-    await signIn();
+    setAuthStatus("loading");
+    setAuthMessage("");
+    const result = await signIn();
+    if (!result?.ok) {
+      setAuthStatus("error");
+      setAuthMessage(result?.error || "Could not sign in.");
+    }
   }
 
   async function resendConfirmation() {
@@ -133,7 +148,8 @@ export default function AuthModal({ showAuthModal, setShowAuthModal, email, setE
             <form onSubmit={handleSubmit} className="space-y-4">
               {isSignUp && <input required value={name} onChange={(event) => setName(event.target.value)} placeholder="Your name" className="w-full rounded-xl border border-white/25 bg-transparent px-4 py-4 text-white outline-none placeholder:text-white/35 focus:border-cyan-300" />}
               <input required type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="Email address" className="w-full rounded-xl border border-white/25 bg-transparent px-4 py-4 text-white outline-none placeholder:text-white/35 focus:border-cyan-300" />
-              {!isForgotPassword && <input required type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Password" className="w-full rounded-xl border border-white/25 bg-transparent px-4 py-4 text-white outline-none placeholder:text-white/35 focus:border-cyan-300" />}
+              {!isForgotPassword && <PasswordInput value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Password" autoComplete={isSignUp ? "new-password" : "current-password"} />}
+              {!isForgotPassword && <PasswordInput value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} placeholder="Confirm password" autoComplete={isSignUp ? "new-password" : "current-password"} />}
               {authMessage && <p role="status" className={`text-sm ${authStatus === "error" ? "text-rose-300" : "text-cyan-200"}`}>{authMessage}</p>}
               <button type="submit" disabled={authStatus === "loading"} className="w-full rounded-xl bg-gradient-to-r from-rose-400 to-violet-500 py-4 font-black text-white transition hover:brightness-110 disabled:cursor-wait disabled:opacity-60">{authStatus === "loading" ? "Please wait..." : isForgotPassword ? "Send reset link" : isSignUp ? "Create account" : "Sign in"}</button>
             </form>

@@ -447,8 +447,8 @@ async function signIn() {
   });
 
   if (error) {
-    alert(error.message);
-    return;
+    logAuthDiagnostic("sign in failed", { errorMessage: error.message });
+    return { ok: false, error: "Email or password is incorrect, or the account has not been confirmed." };
   }
 
   const signedInUser = data.user;
@@ -474,6 +474,7 @@ async function signIn() {
   setPassword("");
   setPage("library");
   window.scrollTo(0, 0);
+  return { ok: true };
 }
 
 async function signOut() {

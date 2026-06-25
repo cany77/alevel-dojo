@@ -19,6 +19,7 @@ import { examDates } from "./data/examDates";
 import { supabase } from "./supabaseClient";
 import { logAuthDiagnostic } from "./authDiagnostics";
 import useResendCooldown from "./useResendCooldown";
+import PasswordInput from "./PasswordInput";
 
 function examStartDate(exam) {
   const time = exam.time || "00:00";
@@ -105,6 +106,7 @@ function HomePageUpgradePreview({
   const [inlineAuthStatus, setInlineAuthStatus] = useState("idle");
   const [inlineAuthMessage, setInlineAuthMessage] = useState("");
   const [confirmationEmail, setConfirmationEmail] = useState("");
+  const [inlineConfirmPassword, setInlineConfirmPassword] = useState("");
   const { secondsRemaining, startCooldown, coolingDown } = useResendCooldown();
   const [now, setNow] = useState(() => new Date());
   const loggedIn = Boolean(user);
@@ -132,9 +134,28 @@ function HomePageUpgradePreview({
     document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
+  function changeInlineAuthMode(nextMode) {
+    setAuthMode(nextMode);
+    setInlineConfirmPassword("");
+    setInlineAuthStatus("idle");
+    setInlineAuthMessage("");
+  }
+
   async function handleInlineAuth() {
+    if (password !== inlineConfirmPassword) {
+      setInlineAuthStatus("error");
+      setInlineAuthMessage("Passwords do not match.");
+      return;
+    }
+
     if (authMode === "signin") {
-      await signIn();
+      setInlineAuthStatus("loading");
+      setInlineAuthMessage("");
+      const result = await signIn();
+      if (!result?.ok) {
+        setInlineAuthStatus("error");
+        setInlineAuthMessage(result?.error || "Could not sign in.");
+      }
       return;
     }
 
@@ -361,7 +382,7 @@ function HomePageUpgradePreview({
             <div className="grid gap-0 lg:grid-cols-[0.95fr_1.05fr]">
               <div className="bg-slate-950/45 p-8"><p className="mb-4 flex items-center gap-2 text-sm font-black uppercase tracking-[0.2em] text-rose-200"><Zap size={18} />Sign in flow</p><h2 className="text-4xl font-black text-white">Clean login and locked tools.</h2><p className="mt-5 leading-8 text-white/55">If a student tries to preview, download, edit, or save without logging in, they see a polished sign-in-required popup.</p></div>
               <div className="p-8">
-                {loggedIn ? (<div><div className="mb-5 inline-flex rounded-2xl bg-emerald-400/15 p-4 text-emerald-200"><CheckCircle2 size={28} /></div><h3 className="text-3xl font-black text-white">You are signed in.</h3><p className="mt-4 leading-8 text-white/55">Home, selected subjects, saved papers, and revision tools are ready.</p><button onClick={onBrowsePapers} className="mt-6 rounded-2xl bg-gradient-to-r from-rose-400 to-violet-500 px-6 py-4 font-black text-white shadow-xl shadow-violet-500/20">Open Home</button></div>) : (<><div className="mb-5 grid grid-cols-2 rounded-2xl bg-white/[0.06] p-1"><button type="button" onClick={() => setAuthMode("signin")} className={`rounded-xl py-3 text-sm font-black ${authMode === "signin" ? "bg-[#ff554f] text-white" : "text-white/45"}`}>Sign in</button><button type="button" onClick={() => setAuthMode("signup")} className={`rounded-xl py-3 text-sm font-black ${authMode === "signup" ? "bg-[#ff554f] text-white" : "text-white/45"}`}>Sign up</button></div>{authMode === "signup" && (<input
+                {loggedIn ? (<div><div className="mb-5 inline-flex rounded-2xl bg-emerald-400/15 p-4 text-emerald-200"><CheckCircle2 size={28} /></div><h3 className="text-3xl font-black text-white">You are signed in.</h3><p className="mt-4 leading-8 text-white/55">Home, selected subjects, saved papers, and revision tools are ready.</p><button onClick={onBrowsePapers} className="mt-6 rounded-2xl bg-gradient-to-r from-rose-400 to-violet-500 px-6 py-4 font-black text-white shadow-xl shadow-violet-500/20">Open Home</button></div>) : (<><div className="mb-5 grid grid-cols-2 rounded-2xl bg-white/[0.06] p-1"><button type="button" onClick={() => changeInlineAuthMode("signin")} className={`rounded-xl py-3 text-sm font-black ${authMode === "signin" ? "bg-[#ff554f] text-white" : "text-white/45"}`}>Sign in</button><button type="button" onClick={() => changeInlineAuthMode("signup")} className={`rounded-xl py-3 text-sm font-black ${authMode === "signup" ? "bg-[#ff554f] text-white" : "text-white/45"}`}>Sign up</button></div>{authMode === "signup" && (<input
   value={name}
   onChange={(e) => setName(e.target.value)}
   placeholder="Your name"
@@ -371,13 +392,7 @@ function HomePageUpgradePreview({
   onChange={(e) => setEmail(e.target.value)}
   placeholder="Email address"
   className="mb-3 w-full rounded-2xl border border-white/15 bg-slate-950 px-4 py-4 text-white outline-none placeholder:text-white/30 focus:border-rose-300"
-/><input
-  value={password}
-  onChange={(e) => setPassword(e.target.value)}
-  type="password"
-  placeholder="Password"
-  className="mb-4 w-full rounded-2xl border border-white/15 bg-slate-950 px-4 py-4 text-white outline-none placeholder:text-white/30 focus:border-rose-300"
-/><button type="button" disabled={inlineAuthStatus === "loading"} onClick={handleInlineAuth} className="w-full rounded-2xl bg-gradient-to-r from-rose-400 to-violet-500 px-5 py-4 font-black text-white shadow-lg shadow-violet-500/20 disabled:cursor-wait disabled:opacity-60">{inlineAuthStatus === "loading" ? "Please wait..." : authMode === "signin" ? "Sign in" : "Create account"}</button>{inlineAuthMessage && <p role="status" className={`mt-3 rounded-xl border p-3 text-sm ${inlineAuthStatus === "error" ? "border-rose-300/20 bg-rose-400/10 text-rose-200" : "border-cyan-300/20 bg-cyan-400/10 text-cyan-100"}`}>{inlineAuthMessage}</p>}{inlineAuthStatus === "confirmation" && <button type="button" disabled={coolingDown} onClick={resendInlineConfirmation} className="mt-3 w-full rounded-xl border border-cyan-300/25 bg-cyan-400/10 px-4 py-3 text-sm font-black text-cyan-100 hover:bg-cyan-400/15 disabled:cursor-wait disabled:opacity-60">{coolingDown ? `Resend again in ${secondsRemaining}s` : "Resend confirmation email"}</button>}</>)}
+/><PasswordInput value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password" autoComplete={authMode === "signup" ? "new-password" : "current-password"} className="mb-3" inputClassName="w-full rounded-2xl border border-white/15 bg-slate-950 px-4 py-4 pr-12 text-white outline-none placeholder:text-white/30 focus:border-rose-300" /><PasswordInput value={inlineConfirmPassword} onChange={(e) => setInlineConfirmPassword(e.target.value)} placeholder="Confirm password" autoComplete={authMode === "signup" ? "new-password" : "current-password"} className="mb-4" inputClassName="w-full rounded-2xl border border-white/15 bg-slate-950 px-4 py-4 pr-12 text-white outline-none placeholder:text-white/30 focus:border-rose-300" /><button type="button" disabled={inlineAuthStatus === "loading"} onClick={handleInlineAuth} className="w-full rounded-2xl bg-gradient-to-r from-rose-400 to-violet-500 px-5 py-4 font-black text-white shadow-lg shadow-violet-500/20 disabled:cursor-wait disabled:opacity-60">{inlineAuthStatus === "loading" ? "Please wait..." : authMode === "signin" ? "Sign in" : "Create account"}</button>{inlineAuthMessage && <p role="status" className={`mt-3 rounded-xl border p-3 text-sm ${inlineAuthStatus === "error" ? "border-rose-300/20 bg-rose-400/10 text-rose-200" : "border-cyan-300/20 bg-cyan-400/10 text-cyan-100"}`}>{inlineAuthMessage}</p>}{inlineAuthStatus === "confirmation" && <button type="button" disabled={coolingDown} onClick={resendInlineConfirmation} className="mt-3 w-full rounded-xl border border-cyan-300/25 bg-cyan-400/10 px-4 py-3 text-sm font-black text-cyan-100 hover:bg-cyan-400/15 disabled:cursor-wait disabled:opacity-60">{coolingDown ? `Resend again in ${secondsRemaining}s` : "Resend confirmation email"}</button>}</>)}
               </div>
             </div>
           </div>

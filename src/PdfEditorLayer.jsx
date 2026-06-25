@@ -34,7 +34,7 @@ const toolOptions = [
   { id: "eraser", label: "Eraser", icon: Eraser },
 ];
 
-const colors = ["#22d3ee", "#8b5cf6", "#fb7185", "#f59e0b", "#22c55e", "#ffffff"];
+const colors = ["#000000", "#0b1f4d", "#22d3ee", "#8b5cf6", "#fb7185", "#f59e0b", "#22c55e", "#ffffff"];
 const textColors = ["#0f172a", "#0e7490", "#6d28d9", "#be123c", "#ffffff"];
 const highlighterColors = [
   "rgba(34, 211, 238, 0.32)",
@@ -71,7 +71,18 @@ const shapeChoices = [
   { id: "line", label: "Line", icon: Minus },
   { id: "arrow", label: "Arrow", icon: MoveUpRight },
 ];
-const compactColors = ["#22d3ee", "#8b5cf6", "#fb7185", "#f59e0b", "#22c55e", "#ffffff"];
+const compactColors = ["#000000", "#0b1f4d", "#22d3ee", "#8b5cf6", "#fb7185", "#f59e0b", "#22c55e", "#ffffff"];
+const colorLabels = {
+  "#000000": "Black",
+  "#0b1f4d": "Navy blue",
+  "#22d3ee": "Cyan",
+  "#8b5cf6": "Violet",
+  "#fb7185": "Rose",
+  "#f59e0b": "Amber",
+  "#22c55e": "Green",
+  "#ffffff": "White",
+};
+const PEN_CURSOR = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cpath d='M3 21l1.7-5.8L16.9 3a2.1 2.1 0 013 3L7.7 18.2 3 21z' fill='%23050816' stroke='%2367e8f9' stroke-width='1.4' stroke-linejoin='round'/%3E%3Cpath d='M14.9 5l4.1 4.1M4.7 15.2l3 3' fill='none' stroke='%23c4b5fd' stroke-width='1.3'/%3E%3C/svg%3E") 3 21, crosshair`;
 const compactHighlightColors = [
   "rgba(34, 211, 238, 0.38)",
   "rgba(251, 113, 133, 0.38)",
@@ -944,6 +955,7 @@ export default function PdfEditorLayer({
         data-pdf-annotation-page={pageNumber}
         style={{
           pointerEvents: isCreatingAnnotation || tool === "eraser" ? "auto" : "none",
+          cursor: tool === "pen" ? PEN_CURSOR : undefined,
         }}
         onPointerDown={(event) => beginAnnotation(event, pageNumber, pageElement, pageSize)}
         onPointerMove={(event) => {
@@ -1101,13 +1113,15 @@ export default function PdfEditorLayer({
 
               {(activeFlyout === "pen" || activeFlyout === "shape") && (
                 <>
-                  <div className="mb-3 grid grid-cols-6 gap-2">
+                  <div className="mb-3 grid grid-cols-4 gap-2">
                     {compactColors.map((color) => (
                       <button
                         key={color}
                         type="button"
                         onClick={() => setStrokeColor(color)}
-                        className={`h-7 w-7 rounded-full border ${strokeColor === color ? "border-cyan-200" : "border-white/15"}`}
+                        aria-label={`Use ${colorLabels[color]} ink`}
+                        title={colorLabels[color]}
+                        className={`h-7 w-7 rounded-full border transition ${strokeColor === color ? "border-cyan-100 ring-2 ring-cyan-300 ring-offset-2 ring-offset-[#050816]" : "border-white/25 hover:border-white/55"}`}
                         style={{ backgroundColor: color }}
                       />
                     ))}
