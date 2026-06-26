@@ -13,6 +13,7 @@ import ResetPasswordPage from "./ResetPasswordPage";
 import AuthCallbackPage from "./AuthCallbackPage";
 import { logAuthDiagnostic } from "./authDiagnostics";
 import PricingModal from "./PricingModal";
+import PaywallModal from "./PaywallModal";
 import { hasPaidAccess } from "./subscriptionAccess";
 import usePersistentState from "./usePersistentState";
 
@@ -229,6 +230,7 @@ export default function ALevelDojo() {
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showLockedModal, setShowLockedModal] = useState(false);
   const [showPricingModal, setShowPricingModal] = useState(false);
+  const [paywallModal, setPaywallModal] = useState(null);
   const [legalModal, setLegalModal] = useState(null);
   const [showFloatingMock, setShowFloatingMock] = useState(false);
   const [profile, setProfile] = useState(null);
@@ -263,6 +265,7 @@ async function logOut() {
   setSubscription(null);
   setShowAuthModal(false);
   setShowLockedModal(false);
+  setPaywallModal(null);
   clearSavedDashboardState();
   setPage("home");
 }
@@ -1440,6 +1443,7 @@ if (page === "library") {
         onSaveProfile={completeOnboarding}
         onRequireLogin={() => setShowLockedModal(true)}
         onOpenPricing={() => setShowPricingModal(true)}
+        onOpenPaywall={setPaywallModal}
         paidAccess={hasPaidAccess(subscription)}
         subscription={subscription}
         onGoHome={() => {
@@ -1471,6 +1475,15 @@ if (page === "library") {
         user={user}
         subscription={subscription}
         onSubscriptionRefresh={() => user && loadSubscription(user)}
+      />
+      <PaywallModal
+        open={Boolean(paywallModal)}
+        onClose={() => setPaywallModal(null)}
+        onOpenAuth={() => setShowAuthModal(true)}
+        user={user}
+        title={paywallModal?.title}
+        message={paywallModal?.message}
+        usageText={paywallModal?.usageText}
       />
       <LegalModal type={legalModal} onClose={() => setLegalModal(null)} />
     </>

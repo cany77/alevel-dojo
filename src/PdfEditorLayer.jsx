@@ -190,6 +190,8 @@ export default function PdfEditorLayer({
   paperId = "",
   pdfType = "question",
   exportFileName = "A-Level-Dojo-Paper-Export.pdf",
+  canExportPdf = true,
+  onExportBlocked = () => {},
 }) {
   const markerRef = useRef(null);
   const saveTimerRef = useRef(null);
@@ -850,6 +852,10 @@ export default function PdfEditorLayer({
 
   async function exportCurrentPdf() {
     if (isExporting) return;
+    if (!canExportPdf) {
+      onExportBlocked();
+      return;
+    }
     setExportError("");
     setIsExporting(true);
 

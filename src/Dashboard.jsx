@@ -8,6 +8,13 @@ import Watermark from "./Watermark";
 import usePersistentState from "./usePersistentState";
 import { annotationsFromPayload, cleanPdfExportFilename, exportAnnotatedPdf } from "./pdfExport";
 import { subjectGroups } from "./data/subjects";
+import {
+  FREE_LIMITS,
+  USAGE_EVENT_TYPES,
+  getFreePlanAccess,
+  getStartOfCurrentWeek,
+  recordUsageEvent,
+} from "./lib/freePlanLimits";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   BarChart3,
@@ -1948,6 +1955,30 @@ function SmallAiTutorCard({ onUpgrade, paidAccess = false }) {
           Unlock AI Tutor
         </button>
       )}
+    </section>
+  );
+}
+
+function PremiumLockedPanel({ title, message, usageText = "", onUpgrade = () => {} }) {
+  return (
+    <section className="rounded-3xl border border-white/10 bg-slate-950/55 p-6 shadow-2xl shadow-black/20">
+      <div className="inline-flex rounded-2xl border border-cyan-300/20 bg-cyan-300/10 p-3 text-cyan-100">
+        <Lock size={22} />
+      </div>
+      <h1 className="mt-4 text-3xl font-black text-white">{title}</h1>
+      <p className="mt-2 max-w-2xl text-sm leading-7 text-white/52">{message}</p>
+      {usageText && (
+        <p className="mt-4 inline-flex rounded-2xl border border-violet-300/20 bg-violet-300/10 px-4 py-3 text-sm font-bold text-violet-100">
+          {usageText}
+        </p>
+      )}
+      <button
+        type="button"
+        onClick={onUpgrade}
+        className="mt-5 rounded-2xl bg-gradient-to-r from-rose-400 to-violet-500 px-5 py-3 text-sm font-black text-white transition-all duration-200 ease-out hover:-translate-y-0.5"
+      >
+        Upgrade to unlock
+      </button>
     </section>
   );
 }
@@ -4860,6 +4891,9 @@ function PastPapersPanel({
   subject,
   user,
   onRequireLogin,
+  planAccess,
+  onRecordUsage = async () => null,
+  onOpenPaywall = () => {},
   persistedPreview = null,
   onPreviewChange = () => {},
   completedPaperIds = [],
@@ -4986,6 +5020,31 @@ function PastPapersPanel({
     });
   }
 
+  async function openPaperEditWithLimit(paper) {
+    const id = paperId(paper);
+
+    if (!planAccess?.canOpenPdfEdit) {
+      onOpenPaywall({
+        title: "PDF Edit limit reached",
+        message: "Free students get 2 PDF edits each week. Upgrade for unlimited PDF editing and export.",
+        usageText: `${planAccess?.usage?.pdfEdits || 0}/${FREE_LIMITS.pdfEditsPerWeek} PDF edits used this week.`,
+      });
+      return;
+    }
+
+    if (!planAccess?.isPaid) {
+      await onRecordUsage(USAGE_EVENT_TYPES.pdfEditOpen, {
+        id,
+        label: paperLabel(paper),
+      });
+    }
+
+    // App-level protection keeps casual access within plan limits. True hard
+    // file protection later needs private storage or signed URLs instead of
+    // public files under public/papers.
+    openPaperPreview(paper, "edit", false);
+  }
+
   function closePaperPreview() {
     setActivePreview(null);
     setShowMarkScheme(false);
@@ -5091,10 +5150,44 @@ function PastPapersPanel({
     }
   }
 
+  function showPaperPaywall(kind) {
+    const usage = planAccess?.usage || {};
+    const messages = {
+      question: {
+        title: "Question paper download limit reached",
+        message: "Free students get 2 question paper downloads each week. Upgrade for unlimited downloads.",
+        usageText: `${usage.questionPaperDownloads || 0}/${FREE_LIMITS.questionPaperDownloadsPerWeek} question paper downloads used this week.`,
+      },
+      markScheme: {
+        title: "Mark scheme download limit reached",
+        message: "Free students get 2 mark scheme downloads each week. Upgrade for unlimited mark schemes.",
+        usageText: `${usage.markSchemeDownloads || 0}/${FREE_LIMITS.markSchemeDownloadsPerWeek} mark scheme downloads used this week.`,
+      },
+      save: {
+        title: "Saved paper limit reached",
+        message: "Free students can save up to 3 papers. Upgrade to save unlimited papers.",
+        usageText: `${savedPaperIds.length}/${FREE_LIMITS.savedPapersTotal} saved papers used.`,
+      },
+      export: {
+        title: "PDF export is included in Dojo Plus",
+        message: "Upgrade to export completed papers with your annotations flattened into the PDF.",
+        usageText: "Free plan: PDF exports are locked.",
+      },
+    };
+
+    onOpenPaywall(messages[kind] || messages.export);
+  }
+
   function toggleSaved(paper) {
     const id = paperId(paper);
+    const isAlreadySaved = savedPaperIds.includes(id);
 
-    const next = savedPaperIds.includes(id)
+    if (!isAlreadySaved && !planAccess?.isPaid && savedPaperIds.length >= FREE_LIMITS.savedPapersTotal) {
+      showPaperPaywall("save");
+      return;
+    }
+
+    const next = isAlreadySaved
       ? savedPaperIds.filter((item) => item !== id)
       : [...savedPaperIds, id];
 
@@ -5131,11 +5224,21 @@ function PastPapersPanel({
     const id = paperId(paper);
     const fileUrl = paper.questionPaper || paper.questionUrl || paper.pdf;
     if (!fileUrl || exportingPaperId) return;
+    if (!planAccess?.canExportPdf) {
+      showPaperPaywall("export");
+      return;
+    }
 
     setExportError("");
     setExportingPaperId(id);
 
     try {
+      if (!planAccess?.isPaid) {
+        await onRecordUsage(USAGE_EVENT_TYPES.pdfExport, {
+          id,
+          label: paperLabel(paper),
+        });
+      }
       const savedAnnotations = await loadSavedPaperAnnotations(id);
       await exportAnnotatedPdf({
         fileUrl,
@@ -5147,6 +5250,32 @@ function PastPapersPanel({
     } finally {
       setExportingPaperId("");
     }
+  }
+
+  async function downloadPaperResource(paper, url, eventType) {
+    if (!url) return;
+    const id = paperId(paper);
+    const isQuestion = eventType === USAGE_EVENT_TYPES.questionPaperDownload;
+    const allowed = isQuestion
+      ? planAccess?.canDownloadQuestionPaper
+      : planAccess?.canDownloadMarkScheme;
+
+    if (!allowed) {
+      showPaperPaywall(isQuestion ? "question" : "markScheme");
+      return;
+    }
+
+    if (!planAccess?.isPaid) {
+      await onRecordUsage(eventType, {
+        id,
+        label: paperLabel(paper),
+      });
+    }
+
+    // App-level protection keeps casual access within plan limits. True hard
+    // file protection later needs private storage or signed URLs instead of
+    // public files under public/papers.
+    window.open(url, "_blank");
   }
 
   function clearFilters() {
@@ -5286,6 +5415,8 @@ function PastPapersPanel({
                     paperId={paperId(activePreview.paper)}
                     pdfType="question"
                     exportFileName={paperExportFileName(activePreview.paper)}
+                    canExportPdf={Boolean(planAccess?.canExportPdf)}
+                    onExportBlocked={() => showPaperPaywall("export")}
                   />
                 ) : (
                   <DocumentFrame
@@ -5516,7 +5647,7 @@ function PastPapersPanel({
                        onClick={() =>
   requireLogin(() => {
     if (isPdfPaper(paper)) {
-      openPaperPreview(paper, "edit", false);
+      openPaperEditWithLimit(paper);
     } else {
       openPaperFile(paper);
     }
@@ -5531,9 +5662,13 @@ function PastPapersPanel({
                       {paper.questionPaper && (
                         <button
                           onClick={() =>
-                            requireLogin(() => {
-                              window.open(paper.questionPaper, "_blank");
-                            })
+                            requireLogin(() =>
+                              downloadPaperResource(
+                                paper,
+                                paper.questionPaper,
+                                USAGE_EVENT_TYPES.questionPaperDownload
+                              )
+                            )
                           }
                           className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2 text-sm font-black text-slate-950"
                         >
@@ -5545,10 +5680,14 @@ function PastPapersPanel({
                       {paper.markScheme && (
                         <button
                           onClick={() =>
-                            requireLogin(() => {
-                                window.open(paper.markScheme, "_blank");
-                            })
-                            }
+                            requireLogin(() =>
+                              downloadPaperResource(
+                                paper,
+                                paper.markScheme,
+                                USAGE_EVENT_TYPES.markSchemeDownload
+                              )
+                            )
+                          }
                           className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2 text-sm font-black text-slate-950"
                         >
                           <Download size={16} />
@@ -5863,6 +6002,9 @@ function TopicTestsPanel({
   subject,
   user,
   onRequireLogin,
+  planAccess,
+  onRecordUsage = async () => null,
+  onOpenPaywall = () => {},
   persistedPreview = null,
   onPreviewChange = () => {},
   onAwardXP = () => {},
@@ -5903,7 +6045,23 @@ function TopicTestsPanel({
     }
   }, [persistedPreview?.paperId, persistedPreview?.type, subject.id]);
 
-  function openTopicPreview(paper, mode) {
+  async function openTopicPreview(paper, mode) {
+    if (!planAccess?.canStartTopicTest) {
+      onOpenPaywall({
+        title: "Topic test limit reached",
+        message: "Free students get 1 topic test each week. Upgrade for unlimited topic practice.",
+        usageText: `${planAccess?.usage?.topicTests || 0}/${FREE_LIMITS.topicTestsPerWeek} topic tests used this week.`,
+      });
+      return;
+    }
+
+    if (!planAccess?.isPaid) {
+      await onRecordUsage(USAGE_EVENT_TYPES.topicTestStart, {
+        id: paperId(paper),
+        label: paperLabel(paper),
+      });
+    }
+
     setActivePreview({ paper, mode });
     onPreviewChange({
       type: "topicTest",
@@ -5977,6 +6135,27 @@ function TopicTestsPanel({
     writeStorage("alevel-dojo-saved-topic-tests", next);
   }
 
+  async function downloadTopicTest(paper, fileUrl) {
+    if (!fileUrl) return;
+    if (!planAccess?.canStartTopicTest) {
+      onOpenPaywall({
+        title: "Topic test limit reached",
+        message: "Free students get 1 topic test each week. Upgrade for unlimited topic practice.",
+        usageText: `${planAccess?.usage?.topicTests || 0}/${FREE_LIMITS.topicTestsPerWeek} topic tests used this week.`,
+      });
+      return;
+    }
+
+    if (!planAccess?.isPaid) {
+      await onRecordUsage(USAGE_EVENT_TYPES.topicTestStart, {
+        id: paperId(paper),
+        label: paperLabel(paper),
+      });
+    }
+
+    window.open(fileUrl, "_blank");
+  }
+
   function clearFilters() {
     setTestSearch("");
     setSelectedTopic("All topics");
@@ -6036,6 +6215,14 @@ function TopicTestsPanel({
             user={user}
             paperId={paperId(activePreview.paper)}
             pdfType="topic-test"
+            canExportPdf={Boolean(planAccess?.canExportPdf)}
+            onExportBlocked={() =>
+              onOpenPaywall({
+                title: "PDF export is included in Dojo Plus",
+                message: "Upgrade to export completed papers with your annotations flattened into the PDF.",
+                usageText: "Free plan: PDF exports are locked.",
+              })
+            }
           />
         </div>
       ) : (
@@ -6179,7 +6366,7 @@ function TopicTestsPanel({
                         <button
                           onClick={() =>
                             requireLogin(() => {
-                              window.open(fileUrl, "_blank");
+                              downloadTopicTest(paper, fileUrl);
                             })
                           }
                           className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2 text-sm font-black text-slate-950"
@@ -6321,6 +6508,9 @@ function SubjectPagePreview({
   onRequireLogin,
   onOpenPricing,
   paidAccess = false,
+  planAccess,
+  onRecordUsage = async () => null,
+  onOpenPaywall = () => {},
   initialSection = "overview",
   persistedPreview = null,
   onPreviewChange = () => {},
@@ -6414,6 +6604,9 @@ function SubjectPagePreview({
             subject={subject}
             user={user}
             onRequireLogin={onRequireLogin}
+            planAccess={planAccess}
+            onRecordUsage={onRecordUsage}
+            onOpenPaywall={onOpenPaywall}
             persistedPreview={persistedPreview}
             onPreviewChange={onPreviewChange}
             completedPaperIds={completedPaperIds}
@@ -6425,6 +6618,9 @@ function SubjectPagePreview({
             subject={subject}
             user={user}
             onRequireLogin={onRequireLogin}
+            planAccess={planAccess}
+            onRecordUsage={onRecordUsage}
+            onOpenPaywall={onOpenPaywall}
             persistedPreview={persistedPreview}
             onPreviewChange={onPreviewChange}
             onAwardXP={onAwardXP}
@@ -6477,6 +6673,7 @@ export default function Dashboard({
   onSaveProfile = async () => {},
   onRequireLogin = () => {},
   onOpenPricing = () => {},
+  onOpenPaywall = () => {},
   paidAccess = false,
   subscription = null,
   onGoHome = () => {},
@@ -6515,6 +6712,7 @@ export default function Dashboard({
   const [calendarEvents, setCalendarEvents] = useState([]);
   const [xpEvents, setXpEvents] = useState([]);
   const [xpEventsLoaded, setXpEventsLoaded] = useState(false);
+  const [usageEvents, setUsageEvents] = useState([]);
   const [xpMenuOpen, setXpMenuOpen] = useState(false);
   const [notificationMenuOpen, setNotificationMenuOpen] = useState(false);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
@@ -6657,6 +6855,32 @@ export default function Dashboard({
     loadXpEvents();
   }, [user]);
 
+  useEffect(() => {
+    async function loadUsageEvents() {
+      if (!user) {
+        setUsageEvents([]);
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("usage_events")
+        .select("*")
+        .eq("user_id", user.id)
+        .gte("created_at", getStartOfCurrentWeek().toISOString())
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        console.error(error);
+        setUsageEvents([]);
+        return;
+      }
+
+      setUsageEvents(data || []);
+    }
+
+    loadUsageEvents();
+  }, [user]);
+
   const subjectsWithProgress = subjects.map((subject) => ({
     ...subject,
     progress: getSubjectProgress(subject, completedPaperIds),
@@ -6754,6 +6978,12 @@ export default function Dashboard({
     cambridgeZone,
   });
   const dashboardSavedPaperIds = readStorage("alevel-dojo-favourites", []);
+  const planAccess = getFreePlanAccess({
+    subscription,
+    paidAccess,
+    usageEvents,
+    savedPapersTotal: dashboardSavedPaperIds.length,
+  });
   const dashboardPaperLists = getDashboardPaperLists(
     activeSubjects,
     completedPaperIds,
@@ -6923,6 +7153,42 @@ export default function Dashboard({
     setCalendarEvents((current) => current.filter((item) => item.id !== event.id));
   }
 
+  async function recordDashboardUsage(eventType, resource = {}) {
+    if (planAccess.isPaid) return null;
+    const { data, error } = await recordUsageEvent(user, eventType, resource);
+
+    if (error) {
+      console.error(error);
+      return null;
+    }
+
+    if (data) setUsageEvents((current) => [data, ...current]);
+    return data;
+  }
+
+  function openFeaturePaywall(feature) {
+    const copy = {
+      calendar: {
+        title: "Exam Calendar is a premium feature",
+        message: "Upgrade to plan exams, mocks, reminders, and revision sessions in your Dojo calendar.",
+      },
+      mistakes: {
+        title: "Mistakes Tracker is a premium feature",
+        message: "Upgrade to log mistakes, track fixes, and build a cleaner revision loop.",
+      },
+      ai: {
+        title: "AI Tutor is locked on Free",
+        message: "Upgrade to unlock personalised help, weak-topic support, and guided paper practice.",
+      },
+      boundaries: {
+        title: "Advanced Grade Boundaries are premium",
+        message: "Upgrade to use detailed trends, predictions, UMS calculators, and threshold tools.",
+      },
+    };
+
+    onOpenPaywall(copy[feature] || copy.ai);
+  }
+
   function handlePreviewChange(resource) {
     if (!resource) {
       setOpenedResource({ openedPaper: null, openedTopicTest: null });
@@ -7007,8 +7273,29 @@ export default function Dashboard({
     setActiveView(section === "topictests" ? "topictests" : section === "pastpapers" ? "pastpapers" : "subject");
   }
 
-  function openPaperFromLanding(subjectId, paper, mode = "edit") {
+  async function openPaperFromLanding(subjectId, paper, mode = "edit") {
     if (!subjectId || !paper) return;
+    if (mode === "edit" && isPdfPaper(paper)) {
+      if (!planAccess.canOpenPdfEdit) {
+        onOpenPaywall({
+          title: "PDF Edit limit reached",
+          message: "Free students get 2 PDF edits each week. Upgrade for unlimited PDF editing and export.",
+          usageText: `${planAccess.usage.pdfEdits}/${FREE_LIMITS.pdfEditsPerWeek} PDF edits used this week.`,
+        });
+        return;
+      }
+
+      if (!planAccess.isPaid) {
+        await recordDashboardUsage(USAGE_EVENT_TYPES.pdfEditOpen, {
+          id: paperId(paper),
+          label: paperLabel(paper),
+        });
+      }
+    }
+
+    // App-level protection keeps casual access within plan limits. True hard
+    // file protection later needs private storage or signed URLs instead of
+    // public files under public/papers.
     setActiveSubjectId(subjectId);
     setSubjectSection("pastpapers");
     setActiveView("pastpapers");
@@ -7055,8 +7342,24 @@ export default function Dashboard({
     }
   }
 
-  function openTopicTestFromLanding(subjectId, test) {
+  async function openTopicTestFromLanding(subjectId, test) {
     if (!subjectId || !test) return;
+    if (!planAccess.canStartTopicTest) {
+      onOpenPaywall({
+        title: "Topic test limit reached",
+        message: "Free students get 1 topic test each week. Upgrade for unlimited topic practice.",
+        usageText: `${planAccess.usage.topicTests}/${FREE_LIMITS.topicTestsPerWeek} topic tests used this week.`,
+      });
+      return;
+    }
+
+    if (!planAccess.isPaid) {
+      await recordDashboardUsage(USAGE_EVENT_TYPES.topicTestStart, {
+        id: paperId(test),
+        label: paperLabel(test),
+      });
+    }
+
     setActiveSubjectId(subjectId);
     setSubjectSection("topictests");
     setActiveView("topictests");
@@ -7421,7 +7724,10 @@ export default function Dashboard({
               user={user}
               onRequireLogin={onRequireLogin}
               onOpenPricing={onOpenPricing}
-              paidAccess={paidAccess}
+              paidAccess={planAccess.isPaid}
+              planAccess={planAccess}
+              onRecordUsage={recordDashboardUsage}
+              onOpenPaywall={onOpenPaywall}
               initialSection={subjectSection}
               persistedPreview={
                 subjectSection === "topictests"
@@ -7435,14 +7741,22 @@ export default function Dashboard({
               onAwardXP={awardXP}
             />
           ) : activeView === "calendar" ? (
-            <ExamCalendarPanel
-              exams={upcomingExams}
-              subjects={activeSubjects}
-              onSaveEvent={saveCalendarEvent}
-              onDeleteEvent={deleteCalendarEvent}
-              needsCambridgeZone={needsCambridgeZone}
-              onOpenAllExams={() => setAllExamsCalendarOpen(true)}
-            />
+            planAccess.canUseCalendar ? (
+              <ExamCalendarPanel
+                exams={upcomingExams}
+                subjects={activeSubjects}
+                onSaveEvent={saveCalendarEvent}
+                onDeleteEvent={deleteCalendarEvent}
+                needsCambridgeZone={needsCambridgeZone}
+                onOpenAllExams={() => setAllExamsCalendarOpen(true)}
+              />
+            ) : (
+              <PremiumLockedPanel
+                title="Exam Calendar is premium"
+                message="Upgrade to build a personal exam timetable, add mocks and reminders, and keep revision dates in one place."
+                onUpgrade={() => openFeaturePaywall("calendar")}
+              />
+            )
           ) : activeView === "pastpapers" ? (
             <PastPapersLandingPage
               subjects={activeSubjects}
@@ -7458,11 +7772,27 @@ export default function Dashboard({
               onOpenTopicTest={openTopicTestFromLanding}
             />
           ) : activeView === "mistakes" ? (
-            <MistakesTrackerPanel mistakes={mistakes} setMistakes={setMistakes} subjects={activeSubjects} onAwardXP={awardXP} />
+            planAccess.canUseMistakes ? (
+              <MistakesTrackerPanel mistakes={mistakes} setMistakes={setMistakes} subjects={activeSubjects} onAwardXP={awardXP} />
+            ) : (
+              <PremiumLockedPanel
+                title="Mistakes Tracker is premium"
+                message="Upgrade to log mistakes, track fixes, and focus your revision on the questions that need attention."
+                onUpgrade={() => openFeaturePaywall("mistakes")}
+              />
+            )
           ) : activeView === "boundaries" ? (
-            <GradeBoundariesPanel subjects={activeSubjects} />
+            planAccess.canUseGradeBoundaries ? (
+              <GradeBoundariesPanel subjects={activeSubjects} />
+            ) : (
+              <PremiumLockedPanel
+                title="Advanced Grade Boundaries are premium"
+                message="Upgrade to unlock boundary trends, predictions, UMS calculators, and threshold tools."
+                onUpgrade={() => openFeaturePaywall("boundaries")}
+              />
+            )
           ) : activeView === "ai" ? (
-            <AiTutorPanel onUpgrade={onOpenPricing} paidAccess={paidAccess} />
+            <AiTutorPanel onUpgrade={() => openFeaturePaywall("ai")} paidAccess={planAccess.isPaid} />
           ) : activeView === "settings" ? (
             <ProfileSettingsPanel
               profile={dashboardProfile}
@@ -7487,8 +7817,8 @@ export default function Dashboard({
               stats={stats}
               upcomingExams={upcomingExams}
               onSelectView={selectView}
-              onOpenPricing={onOpenPricing}
-              paidAccess={paidAccess}
+              onOpenPricing={() => openFeaturePaywall("ai")}
+              paidAccess={planAccess.isPaid}
               paperLists={dashboardPaperLists}
               onOpenPaperPreview={(subjectId, paper) => openPaperFromLanding(subjectId, paper, "preview")}
               onOpenPaperEdit={(subjectId, paper) => openPaperFromLanding(subjectId, paper, "edit")}

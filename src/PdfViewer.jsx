@@ -12,6 +12,8 @@ export default function PdfViewer({
   paperId = "",
   pdfType = "question",
   exportFileName = "A-Level-Dojo-Paper-Export.pdf",
+  canExportPdf = true,
+  onExportBlocked = () => {},
 }) {
   const defaultLayoutPluginInstance = defaultLayoutPlugin();
 
@@ -28,6 +30,8 @@ export default function PdfViewer({
           paperId={paperId}
           pdfType={pdfType}
           exportFileName={exportFileName}
+          canExportPdf={canExportPdf}
+          onExportBlocked={onExportBlocked}
         />
       )}
     </div>
