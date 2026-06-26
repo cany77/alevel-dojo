@@ -23,14 +23,31 @@ export default async function handler(request, response) {
   }
 
   const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
-  if (!stripeSecretKey) return sendJson(response, 500, { error: "Stripe is not configured." });
+  if (!stripeSecretKey) {
+    return sendJson(response, 500, {
+      error: "Missing environment variable",
+      missing: "STRIPE_SECRET_KEY",
+    });
+  }
 
   const authHeader = request.headers.authorization || "";
   const accessToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
-  if (!accessToken) return sendJson(response, 401, { error: "Sign in before upgrading." });
+  if (!accessToken) return sendJson(response, 401, { error: "You must be signed in to upgrade." });
 
-  const user = await getUserFromAccessToken(accessToken);
-  if (!user?.id || !user?.email) return sendJson(response, 401, { error: "Invalid session." });
+  let user;
+  try {
+    user = await getUserFromAccessToken(accessToken);
+  } catch (error) {
+    if (error.code === "MISSING_ENV") {
+      return sendJson(response, 500, {
+        error: "Missing environment variable",
+        missing: error.missing,
+      });
+    }
+    console.error("Checkout auth lookup failed:", error);
+    return sendJson(response, 500, { error: "Could not verify your session." });
+  }
+  if (!user?.id || !user?.email) return sendJson(response, 401, { error: "You must be signed in to upgrade." });
 
   const plan = String(request.body?.plan || "").trim();
   const isPlus = plan === "plus";
@@ -40,7 +57,12 @@ export default async function handler(request, response) {
   const priceId = isPlus
     ? process.env.STRIPE_PLUS_PRICE_ID
     : process.env.STRIPE_SEASON_PASS_PRICE_ID;
-  if (!priceId) return sendJson(response, 500, { error: "Stripe price is not configured." });
+  if (!priceId) {
+    return sendJson(response, 500, {
+      error: "Missing environment variable",
+      missing: isPlus ? "STRIPE_PLUS_PRICE_ID" : "STRIPE_SEASON_PASS_PRICE_ID",
+    });
+  }
 
   const checkoutMode = isPlus ? "subscription" : "payment";
   const appUrl = siteUrl();
@@ -56,10 +78,10 @@ export default async function handler(request, response) {
     "line_items[0][price]": priceId,
     "line_items[0][quantity]": 1,
     "metadata[user_id]": user.id,
-    "metadata[plan]": isPlus ? "dojo_plus" : "exam_season_pass",
+    "metadata[plan]": isPlus ? "plus" : "season_pass",
     "metadata[season_expires_at]": isSeasonPass ? "2026-06-30T23:59:59.999Z" : "",
     "subscription_data[metadata][user_id]": isPlus ? user.id : undefined,
-    "subscription_data[metadata][plan]": isPlus ? "dojo_plus" : undefined,
+    "subscription_data[metadata][plan]": isPlus ? "plus" : undefined,
   };
 
   const stripeResponse = await fetch("https://api.stripe.com/v1/checkout/sessions", {

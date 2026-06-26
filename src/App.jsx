@@ -276,7 +276,7 @@ async function loadSubscription(currentUser) {
   }
 
   const { data, error } = await supabase
-    .from("user_subscriptions")
+    .from("subscriptions")
     .select("*")
     .eq("user_id", currentUser.id)
     .maybeSingle();
@@ -403,8 +403,25 @@ useEffect(() => {
   if (!checkout) return;
 
   if (checkout === "success" && user) {
-    loadSubscription(user);
+    let cancelled = false;
+    async function retrySubscriptionRefresh() {
+      for (let attempt = 0; attempt < 6; attempt += 1) {
+        const latestSubscription = await loadSubscription(user);
+        if (cancelled) return;
+        if (hasPaidAccess(latestSubscription)) {
+          setPaywallModal(null);
+          break;
+        }
+        await new Promise((resolve) => window.setTimeout(resolve, 1500));
+      }
+    }
+
+    retrySubscriptionRefresh();
     setShowPricingModal(true);
+    window.history.replaceState({}, "", window.location.pathname || "/");
+    return () => {
+      cancelled = true;
+    };
   }
 
   window.history.replaceState({}, "", window.location.pathname || "/");
