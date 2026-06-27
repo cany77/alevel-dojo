@@ -1501,6 +1501,7 @@ if (page === "library") {
         title={paywallModal?.title}
         message={paywallModal?.message}
         usageText={paywallModal?.usageText}
+        subscription={subscription}
       />
       <LegalModal type={legalModal} onClose={() => setLegalModal(null)} />
     </>

@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Check, Loader2, Lock, Sparkles, X } from "lucide-react";
 import { supabase } from "./supabaseClient";
+import { hasPaidAccess, subscriptionLabel } from "./subscriptionAccess";
 
 const paidPlans = [
   {
@@ -31,11 +32,15 @@ export default function PaywallModal({
   title = "Upgrade to continue",
   message = "This feature is included with Dojo Plus and Exam Season Pass.",
   usageText = "",
+  subscription = null,
 }) {
   const [loadingPlan, setLoadingPlan] = useState("");
   const [error, setError] = useState("");
 
   if (!open) return null;
+
+  const showUpgradeActions = !hasPaidAccess(subscription);
+  const currentPlan = subscriptionLabel(subscription);
 
   async function startCheckout(planId) {
     setError("");
@@ -81,10 +86,10 @@ export default function PaywallModal({
         <div className="flex items-start justify-between gap-4 border-b border-white/10 p-6">
           <div>
             <p className="inline-flex items-center gap-2 rounded-full border border-cyan-300/20 bg-cyan-300/10 px-3 py-1 text-xs font-black uppercase tracking-[0.18em] text-cyan-100">
-              <Lock size={14} /> Free plan limit
+              {showUpgradeActions ? <Lock size={14} /> : <Check size={14} />} {showUpgradeActions ? "Free plan limit" : "Full access active"}
             </p>
-            <h2 className="mt-4 text-3xl font-black tracking-tight">{title}</h2>
-            <p className="mt-3 max-w-2xl text-sm leading-7 text-white/58">{message}</p>
+            <h2 className="mt-4 text-3xl font-black tracking-tight">{showUpgradeActions ? title : currentPlan}</h2>
+            <p className="mt-3 max-w-2xl text-sm leading-7 text-white/58">{showUpgradeActions ? message : "This account already has full access. Premium upgrade prompts are hidden."}</p>
             {usageText && (
               <p className="mt-3 rounded-2xl border border-violet-300/20 bg-violet-300/10 px-4 py-3 text-sm font-bold text-violet-100">
                 {usageText}
@@ -106,6 +111,7 @@ export default function PaywallModal({
           </button>
         </div>
 
+        {showUpgradeActions && (
         <div className="grid gap-4 p-6 md:grid-cols-2">
           {paidPlans.map((plan) => {
             const loading = loadingPlan === plan.id;
@@ -143,6 +149,7 @@ export default function PaywallModal({
             );
           })}
         </div>
+        )}
       </div>
     </div>
   );

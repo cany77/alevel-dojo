@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Check, Loader2, Sparkles, X } from "lucide-react";
 import { supabase } from "./supabaseClient";
-import { hasActiveDojoPlus, hasActiveSeasonPass, subscriptionLabel } from "./subscriptionAccess";
+import { hasActiveDojoPlus, hasActiveSeasonPass, hasPaidAccess, subscriptionLabel } from "./subscriptionAccess";
 
 const plans = [
   {
@@ -73,6 +73,7 @@ export default function PricingModal({
   if (!open) return null;
 
   const currentPlan = subscriptionLabel(subscription);
+  const showUpgradeActions = !hasPaidAccess(subscription);
 
   function handleFree() {
     if (!user) onOpenAuth();
@@ -136,7 +137,7 @@ export default function PricingModal({
               Unlock the full Dojo.
             </h2>
             <p className="mt-3 max-w-2xl text-sm leading-7 text-white/55">
-              You are currently on <span className="font-black text-cyan-100">{currentPlan}</span>. Upgrade through Stripe Checkout when you want premium revision tools.
+              You are currently on <span className="font-black text-cyan-100">{currentPlan}</span>. {showUpgradeActions ? "Upgrade through Stripe Checkout when you want premium revision tools." : "Full access is active on this account."}
             </p>
             {error && (
               <p className="mt-4 rounded-2xl border border-rose-300/20 bg-rose-400/10 px-4 py-3 text-sm font-bold text-rose-100">
@@ -199,6 +200,7 @@ export default function PricingModal({
                   ))}
                 </ul>
 
+                {showUpgradeActions && (
                 <button
                   disabled={current || loading}
                   onClick={() => (plan.id === "free" ? handleFree() : startCheckout(plan.id))}
@@ -211,6 +213,7 @@ export default function PricingModal({
                   {loading && <Loader2 className="animate-spin" size={16} />}
                   {buttonLabel}
                 </button>
+                )}
               </article>
             );
           })}

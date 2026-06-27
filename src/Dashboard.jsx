@@ -8,7 +8,7 @@ import Watermark from "./Watermark";
 import usePersistentState from "./usePersistentState";
 import { annotationsFromPayload, cleanPdfExportFilename, exportAnnotatedPdf } from "./pdfExport";
 import { subjectGroups } from "./data/subjects";
-import { subscriptionLabel } from "./subscriptionAccess";
+import { hasPaidAccess, subscriptionLabel } from "./subscriptionAccess";
 import {
   FREE_LIMITS,
   USAGE_EVENT_TYPES,
@@ -1210,6 +1210,7 @@ function DashboardShellSidebar({
   user,
   profile,
   xp = 0,
+  paidAccess = false,
 }) {
   const [subjectsOpen, setSubjectsOpen] = useState(true);
   const nav = [
@@ -1326,7 +1327,7 @@ function DashboardShellSidebar({
       </div>
 
       <div className={`shrink-0 border-t border-white/10 pt-3 ${open ? "" : "flex flex-col items-center gap-2"}`}>
-        {open && (
+        {open && !paidAccess && (
           <button
             onClick={onOpenPricing}
             className="mb-3 w-full rounded-2xl bg-gradient-to-r from-rose-400 to-violet-500 px-4 py-2.5 text-sm font-black text-white shadow-lg shadow-rose-500/15 transition-all duration-200 ease-out hover:-translate-y-0.5"
@@ -3757,6 +3758,7 @@ function ProfileSettingsPanel({
 }) {
   const currentPlanLabel = subscriptionLabel(subscription);
   const isFounderPlan = currentPlanLabel === "Founder Access";
+  const showUpgradeActions = !hasPaidAccess(subscription);
   const settingsSections = [
     {
       group: "Account",
@@ -4234,7 +4236,9 @@ function ProfileSettingsPanel({
               <p className="font-black text-white">Billing</p>
               <p className="mt-1 text-sm text-white/45">Billing controls will appear here when paid plans launch.</p>
             </div>
-            <button type="button" onClick={onOpenPricing} className="mt-4 rounded-2xl bg-gradient-to-r from-rose-400 to-violet-500 px-5 py-3 text-sm font-black text-white transition-all duration-200 ease-out hover:-translate-y-0.5">Upgrade</button>
+            {showUpgradeActions && (
+              <button type="button" onClick={onOpenPricing} className="mt-4 rounded-2xl bg-gradient-to-r from-rose-400 to-violet-500 px-5 py-3 text-sm font-black text-white transition-all duration-200 ease-out hover:-translate-y-0.5">Upgrade</button>
+            )}
           </SettingSection>
 
           <SettingSection id="account-actions-settings" kicker="Account" title="Account actions">
@@ -4416,7 +4420,9 @@ function ProfileSettingsPanel({
             <p className="font-black text-white">Current plan: {currentPlanLabel}</p>
             <p className="mt-1 text-sm text-white/45">{isFounderPlan ? "Private full access is active on this account." : "Use pricing to manage paid access when you are ready."}</p>
           </div>
-          <button onClick={onOpenPricing} className="mt-4 rounded-2xl bg-gradient-to-r from-rose-400 to-violet-500 px-5 py-3 text-sm font-black text-white">Upgrade</button>
+          {showUpgradeActions && (
+            <button onClick={onOpenPricing} className="mt-4 rounded-2xl bg-gradient-to-r from-rose-400 to-violet-500 px-5 py-3 text-sm font-black text-white">Upgrade</button>
+          )}
         </SettingCard>
 
         <SettingCard title="Preferences">
@@ -7518,6 +7524,7 @@ export default function Dashboard({
           user={user}
           profile={dashboardProfile}
           xp={currentXp}
+          paidAccess={planAccess.isPaid}
         />
 
         <main className={`${sidebarAffectsLayout ? "lg:ml-[230px]" : "lg:ml-0"} px-5 pb-5 pt-20 transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] md:px-8 lg:px-10`}>
