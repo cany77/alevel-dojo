@@ -1,6 +1,6 @@
 export const SEASON_PASS_EXPIRES_AT = "2026-06-30T23:59:59.999Z";
 
-function normalizedPlan(subscription = null) {
+export function normalizedPlan(subscription = null) {
   if (!subscription?.plan) return "";
   if (subscription.plan === "dojo_plus") return "plus";
   if (subscription.plan === "exam_season_pass") return "season_pass";
@@ -23,11 +23,21 @@ export function hasActiveSeasonPass(subscription = null, now = new Date()) {
   return new Date(expiresAt).getTime() > now.getTime();
 }
 
+export function hasActiveFounderAccess(subscription = null) {
+  if (!subscription) return false;
+  return normalizedPlan(subscription) === "founder" && subscription.status === "active";
+}
+
 export function hasPaidAccess(subscription = null, now = new Date()) {
-  return hasActiveDojoPlus(subscription) || hasActiveSeasonPass(subscription, now);
+  return (
+    hasActiveFounderAccess(subscription) ||
+    hasActiveDojoPlus(subscription) ||
+    hasActiveSeasonPass(subscription, now)
+  );
 }
 
 export function subscriptionLabel(subscription = null) {
+  if (hasActiveFounderAccess(subscription)) return "Founder Access";
   if (hasActiveDojoPlus(subscription)) return "Dojo Plus";
   if (hasActiveSeasonPass(subscription)) return "Exam Season Pass";
   return "Free";

@@ -97,6 +97,7 @@ async function ensureSubscriptionsTable(admin) {
     const tableError = new Error("Supabase subscriptions table check failed");
     tableError.code = "SUBSCRIPTIONS_TABLE_CHECK_FAILED";
     tableError.details = error;
+    tableError.supabaseHost = supabaseHost(admin.url);
     throw tableError;
   }
 
@@ -181,6 +182,9 @@ async function handleCheckoutCompleted(admin, session) {
     });
     const error = new Error("Missing checkout metadata");
     error.statusCode = 400;
+    error.code = "MISSING_CHECKOUT_METADATA";
+    error.sessionId = session.id;
+    error.metadata = session.metadata || null;
     throw error;
   }
 
@@ -261,6 +265,8 @@ async function handleInvoiceEvent(event) {
 }
 
 export default async function handler(request, response) {
+  let step = "start";
+
   if (request.method !== "POST") {
     response.setHeader("Allow", "POST");
     return sendJson(response, 405, { error: "Method not allowed." });
@@ -268,13 +274,17 @@ export default async function handler(request, response) {
 
   let admin;
   try {
+    step = "load env vars";
     getRequiredEnv("STRIPE_WEBHOOK_SECRET");
     getRequiredEnv("STRIPE_SECRET_KEY");
+    step = "create supabase admin";
     admin = createSupabaseAdmin();
   } catch (error) {
-    console.error("Stripe webhook missing configuration:", {
+    console.error("Stripe webhook failed", {
+      step,
       missing: error.missing,
       message: error.message,
+      stack: error.stack,
     });
     return sendJson(response, 500, {
       error: "Missing environment variable",
@@ -282,47 +292,117 @@ export default async function handler(request, response) {
     });
   }
 
-  const payload = await rawBody(request);
+  let payload;
+  try {
+    step = "read raw body";
+    payload = await rawBody(request);
+  } catch (error) {
+    console.error("Stripe webhook failed", {
+      step,
+      message: error.message,
+      stack: error.stack,
+    });
+    return sendJson(response, 400, {
+      error: "Could not read webhook body",
+      message: error.message,
+      step,
+    });
+  }
   const signatureHeader = request.headers["stripe-signature"];
 
   try {
+    step = "verify stripe signature";
     if (!verifyStripeSignature(payload, signatureHeader)) {
-      return sendJson(response, 400, { error: "Invalid signature." });
+      return sendJson(response, 400, { error: "Invalid signature.", step });
     }
   } catch (error) {
-    console.error("Stripe webhook signature check failed:", error);
+    console.error("Stripe webhook failed", {
+      step,
+      message: error.message,
+      stack: error.stack,
+    });
     return sendJson(response, 400, {
       error: "Invalid webhook configuration",
       message: error.message,
+      step,
     });
   }
 
-  const event = JSON.parse(payload);
+  let event;
+  try {
+    step = "parse event";
+    event = JSON.parse(payload);
+  } catch (error) {
+    console.error("Stripe webhook failed", {
+      step,
+      message: error.message,
+      stack: error.stack,
+    });
+    return sendJson(response, 400, {
+      error: "Invalid Stripe event payload",
+      message: error.message,
+      step,
+    });
+  }
 
   try {
     if (event.type === "checkout.session.completed") {
-      await handleCheckoutCompleted(admin, event.data.object);
+      step = "read checkout metadata";
+      const session = event.data.object;
+      if (!session.metadata?.user_id || !session.metadata?.plan) {
+        return sendJson(response, 400, {
+          error: "Missing checkout metadata",
+          session_id: session.id,
+          metadata: session.metadata || null,
+          step,
+        });
+      }
+      step = "upsert subscription";
+      await handleCheckoutCompleted(admin, session);
     } else if (event.type === "customer.subscription.updated") {
+      step = "update subscription";
       await handleSubscriptionUpdated(admin, event.data.object);
     } else if (event.type === "customer.subscription.deleted") {
+      step = "cancel subscription";
       await handleSubscriptionDeleted(admin, event.data.object);
     } else if (event.type === "invoice.paid" || event.type === "invoice.payment_failed") {
+      step = "log invoice event";
       await handleInvoiceEvent(event);
     }
 
+    step = "finish";
     return sendJson(response, 200, { received: true });
   } catch (error) {
-    console.error("Stripe webhook handling failed:", error);
+    console.error("Stripe webhook failed", {
+      step,
+      message: error.message,
+      stack: error.stack,
+    });
     if (error.code === "SUBSCRIPTIONS_TABLE_CHECK_FAILED") {
       return sendJson(response, 500, {
-        error: "Supabase subscriptions table check failed",
-        details: error.details,
+        error: "Subscriptions table check failed",
+        step: "check subscriptions table",
+        supabaseHost: error.supabaseHost,
+        supabaseCode: error.details?.code,
+        supabaseMessage: error.details?.message,
+        supabaseDetails: error.details?.details,
+        supabaseHint: error.details?.hint,
+      });
+    }
+
+    if (error.code === "MISSING_CHECKOUT_METADATA") {
+      return sendJson(response, 400, {
+        error: "Missing checkout metadata",
+        session_id: error.sessionId,
+        metadata: error.metadata,
+        step,
       });
     }
 
     return sendJson(response, error.statusCode || 500, {
       error: "Webhook handling failed",
       message: error.message,
+      step,
     });
   }
 }

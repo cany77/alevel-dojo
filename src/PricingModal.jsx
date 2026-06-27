@@ -98,7 +98,11 @@ export default function PricingModal({
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ plan: planId }),
+        body: JSON.stringify({
+          plan: planId,
+          user_id: user.id,
+          email: user.email,
+        }),
       });
 
       const payload = await response.json();

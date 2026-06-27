@@ -8,6 +8,7 @@ import Watermark from "./Watermark";
 import usePersistentState from "./usePersistentState";
 import { annotationsFromPayload, cleanPdfExportFilename, exportAnnotatedPdf } from "./pdfExport";
 import { subjectGroups } from "./data/subjects";
+import { subscriptionLabel } from "./subscriptionAccess";
 import {
   FREE_LIMITS,
   USAGE_EVENT_TYPES,
@@ -3740,6 +3741,7 @@ function SettingsSection({ id, kicker, title, children }) {
 function ProfileSettingsPanel({
   profile,
   user,
+  subscription = null,
   allSubjectsList,
   draftSelectedIds,
   onToggleSubject,
@@ -3753,6 +3755,8 @@ function ProfileSettingsPanel({
   onOpenPricing = () => {},
   onLogout = () => {},
 }) {
+  const currentPlanLabel = subscriptionLabel(subscription);
+  const isFounderPlan = currentPlanLabel === "Founder Access";
   const settingsSections = [
     {
       group: "Account",
@@ -4217,11 +4221,11 @@ function ProfileSettingsPanel({
 
           <SettingSection id="subscription-settings" kicker="Account" title="Subscription">
             <div className="grid gap-3 md:grid-cols-3">
-              {["Free", "Dojo Plus", "Dojo Pro"].map((plan, index) => (
-                <div key={plan} className={`rounded-2xl border p-4 ${index === 0 ? "border-cyan-300/20 bg-cyan-300/10" : "border-white/10 bg-slate-950/45"}`}>
+              {[currentPlanLabel, "Dojo Plus", "Exam Season Pass"].map((plan, index) => (
+                <div key={plan} className={`rounded-2xl border p-4 ${index === 0 ? (isFounderPlan ? "border-violet-300/30 bg-violet-300/10" : "border-cyan-300/20 bg-cyan-300/10") : "border-white/10 bg-slate-950/45"}`}>
                   <p className="font-black text-white">{index === 0 ? "Current plan: " : ""}{plan}</p>
                   <p className="mt-2 text-sm leading-6 text-white/45">
-                    {index === 0 ? "Basic dashboard, saved subjects, and progress tracking." : index === 1 ? "Unlimited papers, PDF tools, topic tests, mistakes, calendar, and insights." : "AI tutor, weak-topic recommendations, generators, and advanced analytics."}
+                    {index === 0 ? (isFounderPlan ? "Private full access for founders, family, testers, and early users." : "Your current access level for A-Level Dojo.") : index === 1 ? "Unlimited papers, PDF tools, topic tests, mistakes, calendar, and insights." : "One-time access through exam season."}
                   </p>
                 </div>
               ))}
@@ -4409,8 +4413,8 @@ function ProfileSettingsPanel({
 
         <SettingCard title="Plan">
           <div className="rounded-2xl border border-cyan-300/20 bg-cyan-300/10 p-4">
-            <p className="font-black text-white">Current plan: Free</p>
-            <p className="mt-1 text-sm text-white/45">Billing and subscription controls will appear here when paid plans launch.</p>
+            <p className="font-black text-white">Current plan: {currentPlanLabel}</p>
+            <p className="mt-1 text-sm text-white/45">{isFounderPlan ? "Private full access is active on this account." : "Use pricing to manage paid access when you are ready."}</p>
           </div>
           <button onClick={onOpenPricing} className="mt-4 rounded-2xl bg-gradient-to-r from-rose-400 to-violet-500 px-5 py-3 text-sm font-black text-white">Upgrade</button>
         </SettingCard>
@@ -7807,6 +7811,7 @@ export default function Dashboard({
               xp={currentXp}
               streak={currentStreak}
               xpEvents={xpEvents}
+              subscription={subscription}
               onOpenPricing={onOpenPricing}
               onLogout={handleLogout}
             />

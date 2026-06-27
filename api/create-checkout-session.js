@@ -49,6 +49,12 @@ export default async function handler(request, response) {
   }
   if (!user?.id || !user?.email) return sendJson(response, 401, { error: "You must be signed in to upgrade." });
 
+  const requestedUserId = String(request.body?.user_id || "").trim();
+  const requestedEmail = String(request.body?.email || "").trim().toLowerCase();
+  if (!requestedUserId || requestedUserId !== user.id || !requestedEmail || requestedEmail !== user.email.toLowerCase()) {
+    return sendJson(response, 401, { error: "You must be signed in to upgrade." });
+  }
+
   const plan = String(request.body?.plan || "").trim();
   const isPlus = plan === "plus";
   const isSeasonPass = plan === "season_pass";
