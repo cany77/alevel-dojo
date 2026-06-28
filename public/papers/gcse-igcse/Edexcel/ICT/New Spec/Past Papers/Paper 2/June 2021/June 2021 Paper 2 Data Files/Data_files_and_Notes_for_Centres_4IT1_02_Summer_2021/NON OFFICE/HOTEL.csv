@@ -1,0 +1,21 @@
+﻿Hotel ID,Hotel Name,Resort,Ski Pass,Price Range
+H101,Das Konservatorium,Alpbach,TRUE,High
+H102,Haus Montain,Mayrhofen,FALSE,Low
+H103,Alpen Haus,Obergurgl,TRUE,Low
+H104,Keltisch Resort,Innsbruck,TRUE,High
+H105,Hotel Flussfer,Kitzbuhel,FALSE,Medium
+H106,Haus Wald,Obergurgl,TRUE,Medium
+H107,Hotel Ski,Innsbruck,FALSE,High
+H108,Hotel mit grünem Blick,Mayrhofen,TRUE,High
+H109,Skigebiet,Innsbruck,TRUE,Medium
+H110,Die Hütte,Saalbach,FALSE,Low
+H111,Haus Sloeden,Alpbach,TRUE,High
+H112,Gurgl ski resort,Saalbach,FALSE,Low
+H113,Hausbaum,Kitzbuhel,TRUE,Medium
+H114,Haus aus Schnee,Obergurgl,FALSE,Low
+H115,Hotel Garten,Mayrhofen,FALSE,High
+H116,Windiger Grat,Alpbach,TRUE,High
+H117,Baumkronen,Innsbruck,FALSE,Low
+H118,Herrenhaus,Obergurgl,TRUE,High
+H119,Ruhiges Hotel,Kitzbuhel,TRUE,Low
+H200,Imst Haus,Innsbruck,TRUE,High

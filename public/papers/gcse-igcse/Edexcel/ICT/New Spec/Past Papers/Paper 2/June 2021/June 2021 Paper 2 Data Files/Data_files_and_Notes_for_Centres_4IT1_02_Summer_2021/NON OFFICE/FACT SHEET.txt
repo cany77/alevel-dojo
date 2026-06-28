@@ -1,0 +1,15 @@
+Instructions are provided in italics
+
+Welcome to The Ski Run (Heading)
+
+Ski lessons offered: (Sub-heading)
+private (bullet)
+must be pre-booked (sub bullet)
+requires a 10% deposit (sub bullet)
+group (bullet)
+beginners (sub bullet)
+intermediate (sub bullet)
+advanced (sub bullet)
+
+A table needs to be created and included in the fact sheet - see Table image in the images folder.
+

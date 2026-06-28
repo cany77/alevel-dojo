@@ -1,0 +1,15 @@
+Service ID,Services,Service charge,Aftercare advice,Discount available
+CD1,Clipping Disposal,Per metre,FALSE,FALSE
+HT1,Hedge Trimming,Per metre,TRUE,FALSE
+LC1,Lawncare,Per m2,FALSE,FALSE
+LC2,Lawncare,Per m2,FALSE,FALSE
+LC3,Lawncare,Per m2,TRUE,FALSE
+LC4,Lawncare,Per m2,TRUE,TRUE
+LC5,Lawncare,Per m2,TRUE,TRUE
+LM1,Lawn Mowing,Per hour,TRUE,FALSE
+MO1,Makeover,Per m2,TRUE,TRUE
+MO2,Makeover,Per m2,FALSE,FALSE
+MO3,Makeover,Per m2,TRUE,FALSE
+MO4,Makeover,Per m2,TRUE,TRUE
+MO5,Makeover,Per m2,TRUE,TRUE
+WC1,Weed Control,Per hour,TRUE,FALSE

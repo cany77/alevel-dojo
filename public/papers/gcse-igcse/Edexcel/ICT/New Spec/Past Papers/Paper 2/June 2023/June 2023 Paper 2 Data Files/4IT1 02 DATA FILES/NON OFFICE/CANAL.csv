@@ -1,0 +1,19 @@
+CANAL_ID,JOURNEY NAME,DISTANCE (KM),TIME (HRS),NUMBER OF LOCKS
+1,Messac via Josselin and Blain to Messac,402,68,68
+2,Messac via Rennes and Josselin to Messac,304,56,54
+3,Messac via Nante to Messac,280,44,36
+4,Trebes via Beziers to Trebes,180,36,58
+5,Castelnaudary to Port Cassafieres,157,33,63
+6,Port Cassafieres to Narbonne,128,27,44
+7,Homps to Trebes,120,29,51
+8,Castelnaudary via Toulouse to Caster,120,24,34
+9,Trebes to Minervon,118,32,53
+10,Castelnaudary via Carcassonne to Castelnaudary,104,21,48
+11,Castelnaudary to Homps,81,20,45
+12,Homps via Carcassonne to Homps,80,20,42
+13,Homps to Port Cassafieres,77,13,18
+14,Homps to Trebes,52,13,28
+15,Castelnaudary via Gardouch to Castelnaudary,52,11,18
+16,Casternaudary to Trebes,52,14,31
+17,Homps via Le Somail to Homps,40,11,12
+18,Trebes via Carcassone to Trebes,26,7,12

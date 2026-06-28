@@ -1,0 +1,36 @@
+This document needs to be created as shown in the LETTER image.
+
+
+(TITLE) (LNAME)
+(ADDR1)
+(ADDR2)
+(PCODE)
+
+Dear (FNAME)
+
+Thank you for booking your (PARTYTYPE) party through The Perfect Party. 
+
+If you book with us again, you will have:
+
+a 5% discount on catering
+a 10% discount on venue decoration
+
+Quote the Discount Code PP20RB when you make your next booking.
+
+Complimentary close 
+
+
+
+
+Name of the sender
+Job role of the sender
+
+
+
+
+
+
+
+
+
+

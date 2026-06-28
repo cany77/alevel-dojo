@@ -1,0 +1,25 @@
+Holiday ID,Country,Region,Dive boat company,Number of days,Liveaboard or day boat
+EG1,Egypt,Hurghada,Blue Water I,14,Day boat
+EG2,Egypt,Hurghada,Blue Water I,7,Liveaboard
+EG3,Egypt,Marsa Alam,Blue Divers,10,Day boat
+EG4,Egypt,Sharm-El- Sheikh,Sea Divers,14,Liveaboard
+MD1,Maldives,Dhunikholhu,Turtle Bay I,14,Liveaboard
+MD2,Maldives,Meeru,Turtle Bay II,10,Day boat
+MD3,Maldives,Ari Atoll,Blue Water II,7,Liveaboard
+MD4,Maldives,Biyadhoo,Male Diving,10,Day boat
+MX1,Mexico,Cozumel,Deep Blue I,14,Day boat
+MX2,Mexico,Yucatan,Deep Blue II,14,Liveaboard
+MX3,Mexico,Cenotes,Green Royale,10,Liveaboard
+MX4,Mexico,Sorocco Island,Pro Diving,10,Day boat
+PH1,Philippines,Malapascua,Eastern Diving,14,Liveaboard
+PH2,Philippines,Palawan,Eastern Diving,10,Liveaboard
+PH3,Philippines,Bohol,Ocean Wanderer,7,Day boat
+PH4,Philippines,Mindoro,Calypso,14,Day boat
+TH1,Thailand,Phuket,Manta Ray Bay,14,Liveaboard
+TH2,Thailand,Koh Tao,Whale Shark Diving,7,Day boat
+TH3,Thailand,Koh Samui,Sunset Diving,10,Liveaboard
+TH4,Thailand,Pattaya,Andaman Divers,7,Day boat
+UK1,Scotland,Scapa Flow,Scapa Dive,7,Liveaboard
+UK2,Wales,Pembroke,Born2Dive II,10,Liveaboard
+UK3,England,Dartmouth,Blue Dart,7,Day boat
+UK4,England,Farne Islands,Island Boats,7,Day boat

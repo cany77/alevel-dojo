@@ -1,0 +1,17 @@
+CAR ID,CAR TYPE,TRANSMISSION,FUEL TYPE
+LSUV1,Large SUV,Automatic,Hybrid
+LSUV2,Large SUV,Automatic,Electric
+LSUV3,Large SUV,Manual,Petrol
+LSUV4,Large SUV,Automatic,Petrol
+PR1,Premium,Automatic,Hybrid
+PR2,Premium,Manual,Petrol
+PR3,Premium,Automatic,Petrol
+PR4,Premium,Automatic,Electric
+SSUV1,Small SUV,Automatic,Electric
+SSUV2,Small SUV,Automatic,Hybrid
+SSUV3,Small SUV,Manual,Petrol
+SSUV4,Small SUV,Automatic,Petrol
+ST1,Standard,Manual,Petrol
+ST2,Standard,Automatic,Hybrid
+ST3,Standard,Automatic,Electric
+ST4,Standard,Automatic,Petrol

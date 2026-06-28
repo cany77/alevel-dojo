@@ -1,0 +1,21 @@
+Client ID,Surname,Contact,Lawncare,Makeover,Mowing,Hedge trimming,Clipping disposal,Weed control,Payment method,Frequency of service
+DE45BV,Desmond,Phone call,FALSE,TRUE,FALSE,FALSE,FALSE,TRUE,Cash,Weekly
+GR67TL,Green,Email,TRUE,FALSE,TRUE,TRUE,TRUE,TRUE,Bank Transfer,One off
+HA67JG,Haggerty,Text,TRUE,FALSE,TRUE,FALSE,FALSE,TRUE,Credit/Debit Card,Monthly
+HA76JL,Hayes,Email,TRUE,FALSE,TRUE,FALSE,FALSE,FALSE,Cash,Weekly
+HU09LD,Hughes,Text,FALSE,FALSE,TRUE,FALSE,FALSE,FALSE,Cash,Weekly
+HU43CA,Humble,Email,FALSE,TRUE,FALSE,FALSE,FALSE,FALSE,Cash,By request
+JO03GR,Jones,Text,TRUE,TRUE,FALSE,FALSE,FALSE,FALSE,Credit/Debit Card,By request
+KI56HR,Kindle,Text,FALSE,FALSE,FALSE,TRUE,TRUE,FALSE,Credit/Debit Card,Monthly
+LA02LH,Langley,Text,TRUE,TRUE,FALSE,FALSE,FALSE,TRUE,Cash,Weekly
+MA69PC,Marshall,Text,TRUE,FALSE,FALSE,TRUE,TRUE,FALSE,Credit/Debit Card,One off
+PE03TH,Pearce,Text,FALSE,FALSE,TRUE,FALSE,FALSE,TRUE,Bank Transfer,One off
+PH10HC,Phillips,Phone call,TRUE,FALSE,TRUE,FALSE,FALSE,TRUE,Cash,Weekly
+RO12GR,Rogers,Email,FALSE,TRUE,FALSE,FALSE,FALSE,FALSE,Bank Transfer,Monthly
+SA45WR,Samuel,Phone call,FALSE,FALSE,FALSE,TRUE,TRUE,FALSE,Credit/Debit Card,Monthly
+TH98BR,Thomas,Email,FALSE,FALSE,TRUE,TRUE,TRUE,TRUE,Bank Transfer,One off
+TR65CB,Tracey,Email,TRUE,TRUE,TRUE,TRUE,TRUE,TRUE,Bank Transfer,By request
+WA07GL,Wallis,Email,FALSE,FALSE,FALSE,TRUE,TRUE,FALSE,Credit/Debit Card,Monthly
+WA90PC,Walker,Phone call,TRUE,TRUE,TRUE,FALSE,FALSE,FALSE,Cash,Weekly
+WH96CR,White,Email,TRUE,TRUE,FALSE,TRUE,TRUE,FALSE,Bank Transfer,By request
+YE62UR,Yendell,Email,FALSE,FALSE,FALSE,TRUE,TRUE,TRUE,Bank Transfer,Monthly

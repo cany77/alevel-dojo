@@ -48,8 +48,15 @@ const unitOrder = [
   "Unit 3",
   "Unit 4",
   "Unit 5",
+  "Unit 6",
   "Paper 1",
+  "Paper 1R",
+  "Paper 1H",
+  "Paper 1HR",
   "Paper 2",
+  "Paper 2R",
+  "Paper 2H",
+  "Paper 2HR",
   "Paper 3",
   "Paper 4",
 ];
@@ -78,6 +85,8 @@ function normalizeSubject(subject = "") {
   if (lower === "computer-science") return "Computer Science";
   if (lower === "further-maths") return "Further Mathematics";
   if (lower === "maths") return "Mathematics";
+  if (lower === "math") return "Math";
+  if (lower === "business (gcse)") return "Business";
   return edexcelSubjects[lower] || niceName(subject);
 }
 
@@ -123,8 +132,11 @@ function fileType(filePath) {
 
 function parseSession(value = "") {
   const text = normaliseSpaces(value);
+  if (/\bspecimen\b/i.test(text)) {
+    return { month: "Specimen", year: null, session: "Specimen" };
+  }
   const year = Number(text.match(/\b(20\d{2})\b/)?.[1]) || null;
-  const monthRaw = text.match(/\b(Jan(?:uary)?|Jun(?:e)?|Nov(?:ember)?|Oct(?:ober)?|March|May)\b/i)?.[1] || "";
+  const monthRaw = text.match(/\b(Jan(?:uary)?|Jun(?:e)?|Nov(?:ember)?|Oct(?:ober)?|March|Mar|May)\b/i)?.[1] || "";
   const lower = monthRaw.toLowerCase();
   const month = lower.startsWith("jan")
     ? "Jan"
@@ -134,13 +146,13 @@ function parseSession(value = "") {
         ? "Nov"
         : lower.startsWith("may")
           ? "May"
-          : lower.startsWith("march")
+          : lower.startsWith("mar")
             ? "March"
             : "";
   return {
     month,
     year,
-    session: month && year ? `${month} ${year}` : "",
+    session: month === "Specimen" ? "Specimen" : month && year ? `${month} ${year}` : "",
   };
 }
 
@@ -154,7 +166,9 @@ function findSessionPart(parts) {
 
 function normalizeUnit(value = "", fileName = "") {
   const text = normaliseSpaces(value || fileName);
+  const combined = normaliseSpaces(`${value} ${fileName}`);
   const lower = text.toLowerCase();
+  const combinedLower = combined.toLowerCase();
   const dMatch = lower.match(/\bd\s*([12])\b/);
   if (dMatch) return `Decisions ${dMatch[1]}`;
   const decisionsMatch = lower.match(/\bdecisions?\s*([12])\b/);
@@ -169,6 +183,8 @@ function normalizeUnit(value = "", fileName = "") {
   if (mechanicsMatch) return `Mechanics ${mechanicsMatch[1]}`;
   const unitMatch = lower.match(/\bunit\s*([1-9])\b/);
   if (unitMatch) return `Unit ${unitMatch[1]}`;
+  const gcsePaperMatch = combinedLower.match(/\bpaper\s*([1-9])\s*(hr|h|r)?\b/);
+  if (gcsePaperMatch) return `Paper ${gcsePaperMatch[1]}${(gcsePaperMatch[2] || "").toUpperCase()}`;
   const paperMatch = lower.match(/\bpaper\s*([1-9])\b/);
   if (paperMatch) return `Paper ${paperMatch[1]}`;
   return niceName(text);
@@ -197,6 +213,7 @@ function cambridgeVariantFromComponent(componentCode = "", fallbackVariant = "")
 
 function isQuestion(fileName = "") {
   const name = path.basename(fileName, path.extname(fileName));
+  if (/worked\s*solutions?|\bsolutions?\b/i.test(name)) return false;
   return /\b(?:q|qp)\b/i.test(name) || /question(?:\s*paper)?/i.test(name);
 }
 
@@ -208,6 +225,11 @@ function isMarkScheme(fileName = "") {
 function isExaminerReport(fileName = "") {
   const name = path.basename(fileName, path.extname(fileName));
   return /\ber\b/i.test(name) || /examiner/i.test(name);
+}
+
+function isGradeBoundary(fileName = "") {
+  const name = path.basename(fileName, path.extname(fileName));
+  return /grade\s*boundar/i.test(name);
 }
 
 function sessionSortValue(row) {
@@ -254,6 +276,8 @@ function attachFile(group, filePath) {
     if (!group.fileType) group.fileType = type;
   } else if (isExaminerReport(baseName)) {
     group.examinerReport = url;
+  } else if (isGradeBoundary(baseName)) {
+    group.gradeBoundaries = url;
   }
 }
 
@@ -305,6 +329,122 @@ function processEdexcel({ groups, filePath, parts, board, subject }) {
   attachFile(group, filePath);
 }
 
+function gcseSubjectAndQualification(parts) {
+  const boardFolder = parts[2] || "";
+  const subjectFolder = parts[3] || "";
+  const boardKey = boardFolder.toLowerCase();
+  const subjectKey = subjectFolder.toLowerCase();
+
+  if (boardKey === "edexcel") {
+    if (subjectKey === "business (gcse)") {
+      return { board: "Edexcel GCSE", subject: "Business", qualification: "Edexcel GCSE" };
+    }
+    if (subjectKey === "english") {
+      const isLiterature = parts.some((part) => /^lit$/i.test(part));
+      return {
+        board: "Edexcel International GCSE",
+        subject: isLiterature ? "English Literature" : "English Language",
+        qualification: "Edexcel International GCSE",
+      };
+    }
+    return {
+      board: "Edexcel International GCSE",
+      subject: subjectKey === "math" ? "Math" : normalizeSubject(subjectFolder),
+      qualification: "Edexcel International GCSE",
+    };
+  }
+
+  if (boardKey === "oxford aqa") {
+    return {
+      board: "OxfordAQA International GCSE",
+      subject: normalizeSubject(subjectFolder),
+      qualification: "OxfordAQA International GCSE",
+    };
+  }
+
+  if (boardKey === "cambridge") {
+    return {
+      board: "Cambridge IGCSE",
+      subject: normalizeSubject(subjectFolder),
+      qualification: "Cambridge IGCSE",
+    };
+  }
+
+  return { board: normalizeBoard(boardFolder), subject: normalizeSubject(subjectFolder), qualification: "GCSE / IGCSE" };
+}
+
+function isGcsePastPaperPath(parts) {
+  const lowerParts = parts.map((part) => part.toLowerCase());
+  if (lowerParts.includes("topic tests") || lowerParts.includes("notes") || lowerParts.includes("spec")) return false;
+  if (lowerParts.some((part) => part.includes("textbook") || part.includes("data files") || part === "grade boundaries")) return false;
+  if (lowerParts.includes("past papers")) return true;
+  return lowerParts[2] === "cambridge" && lowerParts[3] === "computer science" && lowerParts.includes("0478");
+}
+
+function gcseSessionInfo(parts, fileName) {
+  const fileSession = parseSession(fileName);
+  if (fileSession.session) return fileSession;
+  const sessionPart = findSessionPart(parts);
+  if (sessionPart?.session) return sessionPart;
+  const specimenPart = parts.find((part) => /specimen/i.test(part));
+  if (specimenPart) return { month: "Specimen", year: null, session: "Specimen" };
+  const monthPart = parts.find((part) => /^(jan|january|june|nov|november|march|mar|may)$/i.test(part));
+  const yearPart = parts.find((part) => /^20\d{2}$/.test(part));
+  if (monthPart && yearPart) return parseSession(`${monthPart} ${yearPart}`);
+  return { month: "", year: null, session: "" };
+}
+
+function gcseUnit(parts, fileName, subject) {
+  const name = path.basename(fileName, path.extname(fileName));
+  const fromFile = normalizeUnit(name, name);
+  if (/^Paper\s+\d/i.test(fromFile)) return fromFile;
+
+  const pastIndex = parts.findIndex((part) => /^past papers$/i.test(part));
+  if (pastIndex >= 0) {
+    const afterPast = parts.slice(pastIndex + 1, -1).find((part) => /paper\s*\d/i.test(part));
+    if (afterPast) return normalizeUnit(afterPast, name);
+  }
+
+  if (subject === "English Language") {
+    const match = name.match(/Lang\s+Paper\s*([12])\s*(R)?/i);
+    if (match) return `Paper ${match[1]}${match[2] ? "R" : ""}`;
+  }
+  if (subject === "English Literature") {
+    const match = name.match(/Lit\s+Paper\s*([12])\s*(R)?/i);
+    if (match) return `Paper ${match[1]}${match[2] ? "R" : ""}`;
+  }
+
+  return fromFile;
+}
+
+function processGcseIgcse({ groups, filePath, parts, stats }) {
+  if (!isGcsePastPaperPath(parts)) return;
+  const fileName = path.basename(filePath);
+  if (!isQuestion(fileName) && !isMarkScheme(fileName) && !isExaminerReport(fileName) && !isGradeBoundary(fileName)) return;
+
+  const { board, subject, qualification } = gcseSubjectAndQualification(parts);
+  const sessionInfo = gcseSessionInfo(parts, fileName);
+  if (!sessionInfo.session) return;
+  const unit = gcseUnit(parts, fileName, subject);
+  if (!/^Paper\s+\d/i.test(unit)) return;
+
+  const key = [board, subject, qualification, sessionInfo.session, sessionInfo.year || "", unit].join("|");
+  const group = createPastPaperGroup(groups, key, {
+    board,
+    subject,
+    qualification,
+    category: "GCSE / IGCSE",
+    level: "GCSE / IGCSE",
+    year: sessionInfo.year || "",
+    month: sessionInfo.month,
+    session: sessionInfo.session,
+    unit,
+    paper: unit,
+  });
+  attachFile(group, filePath);
+  stats.files += 1;
+  stats.boards.add(board);
+}
 function processStandard({ groups, topicTests, filePath, parts, board, subject }) {
   const qualificationFolder = parts[3] || "";
   const sectionFolder = String(parts[4] || "").toLowerCase();
@@ -351,27 +491,37 @@ async function main() {
   const pastPaperGroups = {};
   const topicTests = [];
   let edexcelFiles = 0;
+  const gcseStats = { files: 0, boards: new Set() };
 
   for (const filePath of files) {
     const relativeFromPublic = path.relative(publicDir, filePath);
     const parts = relativeFromPublic.split(path.sep);
     if (parts[0] !== "papers" || parts.length < 4) continue;
 
-    const boardFolder = parts[1];
-    const subjectFolder = parts[2];
+    if (parts[1] === "gcse-igcse") {
+      processGcseIgcse({ groups: pastPaperGroups, filePath, parts, stats: gcseStats });
+      continue;
+    }
+
+
+    const paperParts = parts[1] === "a-level" ? [parts[0], ...parts.slice(2)] : parts;
+    if (paperParts.length < 4) continue;
+
+    const boardFolder = paperParts[1];
+    const subjectFolder = paperParts[2];
     const board = normalizeBoard(boardFolder);
     const subject = normalizeSubject(subjectFolder);
 
     if (boardFolder === "cambridge" && subjectFolder === "computer-science") {
-      processCambridge({ groups: pastPaperGroups, filePath, parts, board, subject });
+      processCambridge({ groups: pastPaperGroups, filePath, parts: paperParts, board, subject });
     } else if (boardFolder === "edexcel") {
       edexcelFiles += 1;
-      processEdexcel({ groups: pastPaperGroups, filePath, parts, board, subject });
+      processEdexcel({ groups: pastPaperGroups, filePath, parts: paperParts, board, subject });
     } else {
-      processStandard({ groups: pastPaperGroups, topicTests, filePath, parts, board, subject });
+      processStandard({ groups: pastPaperGroups, topicTests, filePath, parts: paperParts, board, subject });
     }
-  }
 
+  }
   const pastPapers = Object.values(pastPaperGroups)
     .filter((paper) => paper.questionPaper || paper.markScheme)
     .sort((a, b) => {
@@ -385,14 +535,26 @@ async function main() {
     });
   const allPapers = [...pastPapers, ...topicTests];
   const edexcelEntries = pastPapers.filter((paper) => paper.board === "Edexcel").length;
+  const aLevelEntries = pastPapers.filter((paper) => paper.category !== "GCSE / IGCSE").length;
+  const gcseEntries = pastPapers.filter((paper) => paper.category === "GCSE / IGCSE").length;
+  const unpaired = pastPapers.filter((paper) => paper.category === "GCSE / IGCSE" && (!paper.questionPaper || !paper.markScheme));
   const content = `export const papers = ${JSON.stringify(allPapers, null, 2)};\n`;
 
   await fs.writeFile(outputFile, content, "utf8");
   console.log(`Paper files found: ${files.length}`);
   console.log(`Edexcel paper files found: ${edexcelFiles}`);
   console.log(`Generated ${pastPapers.length} past papers`);
-  console.log(`Generated ${edexcelEntries} Edexcel past paper entries`);
+  console.log(`A-Level papers: ${aLevelEntries}`);
+  console.log(`GCSE/IGCSE papers: ${gcseEntries}`);
+  console.log(`GCSE/IGCSE boards found: ${Array.from(gcseStats.boards).sort().join(", ") || "None"}`);
+  console.log(`Generated ${edexcelEntries} Edexcel A-Level past paper entries`);
   console.log(`Generated ${topicTests.length} topic tests`);
+  console.log(`GCSE/IGCSE unpaired Q/MS warnings: ${unpaired.length}`);
+  unpaired.slice(0, 25).forEach((paper) => {
+    const missing = paper.questionPaper ? "MS" : "Q";
+    console.warn(`Unpaired GCSE/IGCSE ${missing}: ${paper.board} ${paper.subject} ${paper.unit} ${paper.session}`);
+  });
+  if (unpaired.length > 25) console.warn(`...and ${unpaired.length - 25} more unpaired GCSE/IGCSE entries.`);
   console.log("Saved to src/papersData.js");
 }
 

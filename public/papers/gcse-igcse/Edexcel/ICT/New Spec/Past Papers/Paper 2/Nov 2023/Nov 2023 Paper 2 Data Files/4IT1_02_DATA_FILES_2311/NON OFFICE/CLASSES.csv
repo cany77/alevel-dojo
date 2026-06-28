@@ -1,0 +1,28 @@
+CLASS ID,TITLE,TYPE,DAY,DURATION,COST,INSTRUCTOR
+FRBCP,Bootcamp,Hybrid,Friday,60,£6.00,Leeza
+FRMFA,Muscle Factory,Weights,Friday,45,£4.50,Sol
+FRYOG,Yoga,Core,Friday,60,£6.00,Clara
+MOBSK,Body Shock,Hybrid,Monday,45,£4.50,Tomos
+MOPIL,Pilates,Core,Monday,60,£6.00,Sol
+MOPIO,Pound it Out,Cardio,Monday,50,£5.00,Leeza
+MOS60,Strong 60,Weights,Monday,60,£6.00,Clara
+SAMFA,Muscle Factory,Weights,Saturday,45,£4.50,Sol
+SAPIL,Pilates,Core,Saturday,60,£6.00,Clara
+SAPIO,Pound it Out,Cardio,Saturday,50,£5.00,Leeza
+SAS60,Strong 60,Weights,Saturday,60,£6.00,Tomos
+SAST8,Step 8000,Cardio,Saturday,60,£6.00,Clara
+SAYOG,Yoga,Core,Saturday,60,£6.00,Sol
+SUBCP,Bootcamp,Hybrid,Sunday,60,£6.00,Sol
+SUBSK,Body Shock,Hybrid,Sunday,45,£4.50,Clara
+THHIT,HIIT,Cardio,Thursday,45,£4.50,Tomos
+THPIL,Pilates,Core,Thursday,60,£6.00,Leeza
+THS60,Strong 60,Weights,Thursday,60,£6.00,Sol
+THST8,Step 8000,Cardio,Thursday,60,£6.00,Clara
+TUBCP,Bootcamp,Hybrid,Tuesday,60,£6.00,Sol
+TUHIT,HIIT,Cardio,Tuesday,45,£4.50,Clara
+TUST8,Step 8000,Cardio,Tuesday,50,£5.00,Tomos
+TUYOG,Yoga,Core,Tuesday,60,£6.00,Leeza
+WEBSK,Body Shock,Hybrid,Wednesday,45,£4.50,Leeza
+WEMFA,Muscle Factory,Weights,Wednesday,45,£4.50,Sol
+WEPIL,Pilates,Core,Wednesday,60,£6.00,Clara
+WEPIO,Pound it Out,Cardio,Wednesday,50,£5.00,Tomos

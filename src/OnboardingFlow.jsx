@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { ArrowRight, Check, ChevronLeft, Sparkles } from "lucide-react";
 import Watermark from "./Watermark";
-import { subjectGroups } from "./data/subjects";
+import { getAllSubjects, normalizeSubjectSelection, subjectLevelGroups, subjectToProfileSubject } from "./data/subjects";
 
 const yearGroups = ["Year 12", "Year 13", "Private candidate", "Other"];
 const examSeasons = ["June 2026", "Nov 2026", "Jan 2027", "June 2027", "Not sure yet"];
@@ -9,41 +9,51 @@ const weeklyGoals = ["2 hours", "5 hours", "10 hours", "15+ hours"];
 const focusOptions = ["Past papers", "Topic tests", "Mistakes", "Grade boundaries", "AI tutor"];
 
 export default function OnboardingFlow({ user, initialProfile = {}, onComplete = async () => {} }) {
+  const allSubjects = useMemo(() => getAllSubjects(), []);
+  const initialSubjectIds = useMemo(
+    () => normalizeSubjectSelection(initialProfile?.subjects || initialProfile?.selected_subjects || [], allSubjects),
+    [initialProfile?.subjects, initialProfile?.selected_subjects, allSubjects]
+  );
   const [step, setStep] = useState(0);
   const [saving, setSaving] = useState(false);
   const preferences = initialProfile?.preferences || {};
   const [form, setForm] = useState({
     name: initialProfile?.full_name || initialProfile?.name || user?.user_metadata?.full_name || "",
     yearGroup: initialProfile?.year_group || "Year 13",
-    subjects: initialProfile?.subjects || initialProfile?.selected_subjects || [],
+    subjectIds: initialSubjectIds,
     examSeason: preferences.examSeason || "Not sure yet",
     weeklyRevisionGoal: preferences.weeklyRevisionGoal || "5 hours",
     mainFocus: preferences.mainFocus || "Past papers",
   });
 
-  const selectedSubjectLabels = useMemo(
-    () => form.subjects.map((item) => `${item.subject} (${item.board})`).join(", "),
-    [form.subjects]
+  const selectedSubjects = useMemo(
+    () => allSubjects.filter((subject) => form.subjectIds.includes(subject.id)),
+    [allSubjects, form.subjectIds]
   );
 
-  function toggleSubject(board, subject) {
-    const exists = form.subjects.some((item) => item.board === board && item.subject === subject);
+  const selectedSubjectLabels = useMemo(
+    () => selectedSubjects.map((item) => `${item.displayName || item.name} (${item.board}, ${item.qualificationLabel})`).join(", "),
+    [selectedSubjects]
+  );
+
+  function toggleSubject(subjectId) {
     setForm((current) => ({
       ...current,
-      subjects: exists
-        ? current.subjects.filter((item) => !(item.board === board && item.subject === subject))
-        : [...current.subjects, { board, subject }],
+      subjectIds: current.subjectIds.includes(subjectId)
+        ? current.subjectIds.filter((id) => id !== subjectId)
+        : [...current.subjectIds, subjectId],
     }));
   }
 
   async function finish() {
     setSaving(true);
+    const savedSubjects = selectedSubjects.map(subjectToProfileSubject);
     await onComplete({
       full_name: form.name.trim(),
       name: form.name.trim(),
       year_group: form.yearGroup,
-      subjects: form.subjects,
-      selected_subjects: form.subjects,
+      subjects: savedSubjects,
+      selected_subjects: savedSubjects,
       preferences: {
         ...preferences,
         examSeason: form.examSeason,
@@ -55,7 +65,7 @@ export default function OnboardingFlow({ user, initialProfile = {}, onComplete =
     setSaving(false);
   }
 
-  const canContinue = step === 0 || (step === 1 && form.subjects.length > 0) || (step === 2 && form.name.trim() && form.yearGroup);
+  const canContinue = step === 0 || (step === 1 && form.subjectIds.length > 0) || (step === 2 && form.name.trim() && form.yearGroup);
 
   return (
     <div className="min-h-screen bg-[#060816] text-white">
@@ -88,21 +98,34 @@ export default function OnboardingFlow({ user, initialProfile = {}, onComplete =
               <div>
                 <h1 className="text-3xl font-black tracking-tight md:text-5xl">Choose your subjects</h1>
                 <p className="mt-3 text-white/55">Select the subjects and boards you are currently studying.</p>
-                <div className="mt-8 space-y-7">
-                  {subjectGroups.map((group) => (
-                    <section key={group.board}>
-                      <h2 className="mb-3 text-lg font-black">{group.board}</h2>
-                      <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-                        {group.subjects.map((subject) => {
-                          const selected = form.subjects.some((item) => item.board === group.board && item.subject === subject.name);
-                          return (
-                            <button type="button" key={subject.id} onClick={() => toggleSubject(group.board, subject.name)} className={`rounded-2xl border p-4 text-left transition-all duration-200 ease-out hover:-translate-y-0.5 ${selected ? "border-cyan-300/50 bg-cyan-300/10" : "border-white/10 bg-slate-950/45 hover:bg-white/[0.05]"}`}>
-                              <div className="flex items-center justify-between gap-2"><span className="font-black">{subject.name}</span>{selected && <Check size={18} className="text-cyan-200" />}</div>
-                              <p className="mt-2 text-xs text-white/42">{group.board}</p>
-                            </button>
-                          );
-                        })}
+                <div className="mt-8 space-y-8">
+                  {subjectLevelGroups.map((level) => (
+                    <section key={level.qualification} className="space-y-4">
+                      <div>
+                        <h2 className="text-xl font-black">{level.qualificationLabel}</h2>
+                        <p className="mt-1 text-xs font-bold uppercase tracking-[0.18em] text-white/35">
+                          {level.qualification === "a-level" ? "A-Level boards" : "GCSE and IGCSE boards"}
+                        </p>
                       </div>
+                      {level.groups.map((group) => (
+                        <section key={group.board} className="rounded-3xl border border-white/10 bg-slate-950/35 p-4">
+                          <div className="mb-3">
+                            <h3 className="font-black text-white">{group.boardLabel || group.board}</h3>
+                            <p className="mt-1 text-xs text-white/40">{group.description}</p>
+                          </div>
+                          <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+                            {group.subjects.map((subject) => {
+                              const selected = form.subjectIds.includes(subject.id);
+                              return (
+                                <button type="button" key={subject.id} onClick={() => toggleSubject(subject.id)} className={`rounded-2xl border p-4 text-left transition-all duration-200 ease-out hover:-translate-y-0.5 ${selected ? "border-cyan-300/50 bg-cyan-300/10" : "border-white/10 bg-slate-950/45 hover:bg-white/[0.05]"}`}>
+                                  <div className="flex items-center justify-between gap-2"><span className="font-black">{subject.displayName || subject.name}</span>{selected && <Check size={18} className="text-cyan-200" />}</div>
+                                  <p className="mt-2 text-xs text-white/42">{group.boardLabel || group.board}</p>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </section>
+                      ))}
                     </section>
                   ))}
                 </div>

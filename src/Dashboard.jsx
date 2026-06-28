@@ -7,7 +7,12 @@ import PdfViewer from "./PdfViewer";
 import Watermark from "./Watermark";
 import usePersistentState from "./usePersistentState";
 import { annotationsFromPayload, cleanPdfExportFilename, exportAnnotatedPdf } from "./pdfExport";
-import { subjectGroups } from "./data/subjects";
+import {
+  getAllSubjects,
+  normalizeSubjectSelection,
+  subjectLevelGroups,
+  subjectToProfileSubject,
+} from "./data/subjects";
 import { hasPaidAccess, subscriptionLabel } from "./subscriptionAccess";
 import {
   FREE_LIMITS,
@@ -77,6 +82,30 @@ const boardColors = {
     accent: "text-violet-200",
     button: "bg-violet-400 text-white hover:bg-violet-300",
     soft: "bg-violet-400/10 border-violet-300/20",
+  },
+  "Edexcel International GCSE": {
+    chip: "bg-violet-400/12 text-violet-200 border-violet-300/20",
+    accent: "text-violet-200",
+    button: "bg-violet-400 text-white hover:bg-violet-300",
+    soft: "bg-violet-400/10 border-violet-300/20",
+  },
+  "Edexcel GCSE": {
+    chip: "bg-fuchsia-400/12 text-fuchsia-200 border-fuchsia-300/20",
+    accent: "text-fuchsia-200",
+    button: "bg-fuchsia-400 text-white hover:bg-fuchsia-300",
+    soft: "bg-fuchsia-400/10 border-fuchsia-300/20",
+  },
+  "OxfordAQA International GCSE": {
+    chip: "bg-rose-500/12 text-rose-200 border-rose-400/20",
+    accent: "text-rose-300",
+    button: "bg-rose-400 text-white hover:bg-rose-300",
+    soft: "bg-rose-400/10 border-rose-400/20",
+  },
+  "Cambridge IGCSE": {
+    chip: "bg-cyan-400/12 text-cyan-200 border-cyan-300/20",
+    accent: "text-cyan-200",
+    button: "bg-cyan-300 text-slate-950 hover:bg-cyan-200",
+    soft: "bg-cyan-400/10 border-cyan-300/20",
   },
 };
 
@@ -193,7 +222,28 @@ const subjectVisuals = {
     accent: "from-amber-300 via-cyan-300 to-violet-400",
     glow: "shadow-cyan-500/16",
     soft: "bg-cyan-400/12 text-cyan-100 border-cyan-300/20",
-    symbol: "£",
+    symbol: "GBP",
+  },
+  ict: {
+    icon: Code2,
+    accent: "from-cyan-300 via-sky-400 to-violet-400",
+    glow: "shadow-cyan-500/16",
+    soft: "bg-cyan-400/12 text-cyan-100 border-cyan-300/20",
+    symbol: "ICT",
+  },
+  business: {
+    icon: Coins,
+    accent: "from-fuchsia-300 via-violet-400 to-cyan-300",
+    glow: "shadow-fuchsia-500/16",
+    soft: "bg-fuchsia-400/12 text-fuchsia-100 border-fuchsia-300/20",
+    symbol: "Biz",
+  },
+  math: {
+    icon: Calculator,
+    accent: "from-violet-400 via-fuchsia-400 to-cyan-300",
+    glow: "shadow-violet-500/18",
+    soft: "bg-violet-400/12 text-violet-100 border-violet-300/20",
+    symbol: "x",
   },
 };
 
@@ -564,14 +614,26 @@ function sortSessions(values) {
   });
 }
 
+function isGcsePaper(paper = {}) {
+  const text = `${paper.level || ""} ${paper.category || ""} ${paper.qualification || ""} ${paper.board || ""}`.toLowerCase();
+  return text.includes("gcse") || text.includes("igcse");
+}
+
+function paperMatchesSubject(paper, subject) {
+  if (!paper || !subject) return false;
+  if (paper.board !== subject.board || paper.subject !== subject.name) return false;
+
+  if (subject.qualification === "gcse-igcse") return isGcsePaper(paper);
+  if (subject.qualification === "a-level") return !isGcsePaper(paper);
+
+  return true;
+}
+
 function getSubjectPapers(subject) {
   if (!subject) return [];
 
   return papers.filter(
-    (paper) =>
-      paper.type === "Past Paper" &&
-      paper.board === subject.board &&
-      paper.subject === subject.name
+    (paper) => paper.type === "Past Paper" && paperMatchesSubject(paper, subject)
   );
 }
 
@@ -579,10 +641,7 @@ function getSubjectTopicTests(subject) {
   if (!subject) return [];
 
   return papers.filter(
-    (paper) =>
-      paper.type === "Topic Test" &&
-      paper.board === subject.board &&
-      paper.subject === subject.name
+    (paper) => paper.type === "Topic Test" && paperMatchesSubject(paper, subject)
   );
 }
 
@@ -720,6 +779,10 @@ function normalizeSubjectName(value = "") {
 
 function normalizeBoardName(value = "") {
   const normalized = String(value).toLowerCase().replace(/[^a-z0-9]+/g, "");
+  if (normalized.includes("oxfordaqainternationalgcse")) return "oxfordaqainternationalgcse";
+  if (normalized.includes("edexcelinternationalgcse")) return "edexcelinternationalgcse";
+  if (normalized.includes("cambridgeigcse")) return "cambridgeigcse";
+  if (normalized.includes("edexcelgcse")) return "edexcelgcse";
   if (normalized.includes("oxford") || normalized.includes("aqa")) return "oxfordaqa";
   if (normalized.includes("cambridge") || normalized.includes("caie")) return "cambridge";
   if (normalized.includes("edexcel") || normalized.includes("pearson")) return "edexcel";
@@ -842,37 +905,18 @@ function getAllExamsByDate(exams = []) {
 }
 
 function allSubjects() {
-  return subjectGroups.flatMap((group) =>
-    group.subjects.map((subject) => ({ ...subject, board: group.board }))
-  );
+  return getAllSubjects();
 }
 
 function profileSubjectsToIds(profileSubjects = [], subjects = []) {
-  return profileSubjects
-    .flatMap((item) => {
-      if (typeof item === "string") {
-        const byId = subjects.find((subject) => subject.id === item);
-        if (byId) return [byId.id];
-
-        return subjects
-          .filter((subject) => normalizeSubjectName(subject.name) === normalizeSubjectName(item))
-          .map((subject) => subject.id);
-      }
-
-      const subjectName = item.subject || item.name || item.subject_name;
-      const board = item.board;
-
-      const match = subjects.find(
-        (subject) =>
-          normalizeSubjectName(subject.name) === normalizeSubjectName(subjectName) &&
-          (!board || normalizeBoardName(subject.board) === normalizeBoardName(board))
-      );
-
-      return match ? [match.id] : [];
-    })
-    .filter(Boolean);
+  return normalizeSubjectSelection(profileSubjects, subjects);
 }
 
+function subjectProfilePayloadFromIds(ids = [], subjects = []) {
+  return subjects
+    .filter((subject) => ids.includes(subject.id))
+    .map(subjectToProfileSubject);
+}
 
 function Logo({ onGoHome = () => {} }) {
   return (
@@ -888,6 +932,59 @@ function Logo({ onGoHome = () => {} }) {
         <p className="-mt-1 text-[11px] text-white/40">home preview</p>
       </div>
     </button>
+  );
+}
+
+function SubjectLevelSections({ selectedIds = [], onToggle = () => {}, compact = false }) {
+  return (
+    <div className="space-y-6">
+      {subjectLevelGroups.map((level) => (
+        <section key={level.qualification} className="space-y-3">
+          <div>
+            <h3 className="text-lg font-black text-white">{level.qualificationLabel}</h3>
+            <p className="mt-1 text-xs font-bold uppercase tracking-[0.18em] text-white/32">
+              {level.qualification === "a-level" ? "A-Level boards" : "GCSE and IGCSE boards"}
+            </p>
+          </div>
+
+          <div className="grid gap-3">
+            {level.groups.map((group) => (
+              <section
+                key={group.board}
+                className={compact ? "rounded-2xl border border-white/10 bg-slate-950/35 p-3" : "rounded-3xl border border-white/10 bg-white/[0.03] p-4"}
+              >
+                <div className="mb-3">
+                  <h4 className="text-sm font-black text-white">{group.boardLabel || group.board}</h4>
+                  <p className="mt-1 text-xs text-white/38">{group.description}</p>
+                </div>
+
+                <div className="flex flex-wrap gap-2.5">
+                  {group.subjects.map((subject) => {
+                    const selected = selectedIds.includes(subject.id);
+                    return (
+                      <button
+                        type="button"
+                        key={subject.id}
+                        onClick={() => onToggle(subject.id)}
+                        className={`rounded-full border px-4 py-2 text-sm font-black transition-all duration-200 ease-out hover:-translate-y-0.5 ${
+                          selected
+                            ? "border-cyan-300/40 bg-cyan-300/10 text-cyan-100 shadow-[0_0_18px_rgba(34,211,238,0.10)]"
+                            : "border-white/10 bg-white/[0.035] text-white/55 hover:bg-white/[0.06] hover:text-white"
+                        }`}
+                        title={`${subject.displayName || subject.name} - ${group.boardLabel || group.board} - ${level.qualificationLabel}`}
+                      >
+                        {selected && <Check className="mr-1 inline-block" size={14} />}
+                        {subject.displayName || subject.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+            ))}
+          </div>
+        </section>
+      ))}
+    </div>
   );
 }
 
@@ -913,38 +1010,7 @@ function SubjectSetupModal({ open, onClose, selectedIds, onToggle }) {
         </div>
 
         <div className="max-h-[58vh] overflow-y-auto px-7 py-6">
-          <div className="space-y-8">
-            {subjectGroups.map((group) => (
-              <section key={group.board}>
-                <div className="mb-3 flex items-end justify-between gap-3">
-                  <div>
-                    <h3 className="text-lg font-black">{group.board}</h3>
-                    <p className="text-sm text-slate-500">{group.description}</p>
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap gap-2.5">
-                  {group.subjects.map((subject) => {
-                    const selected = selectedIds.includes(subject.id);
-                    return (
-                      <button
-                        key={subject.id}
-                        onClick={() => onToggle(subject.id)}
-                        className={`rounded-full px-4 py-2 text-sm font-bold transition ${
-                          selected
-                            ? "bg-[#ff554f] text-white shadow-sm shadow-red-500/20"
-                            : "border border-white/10 bg-white/8 text-white/65 hover:bg-white/12"
-                        }`}
-                      >
-                        {selected ? "✓ " : ""}
-                        {subject.name}
-                      </button>
-                    );
-                  })}
-                </div>
-              </section>
-            ))}
-          </div>
+          <SubjectLevelSections selectedIds={selectedIds} onToggle={onToggle} />
         </div>
 
         <div className="flex items-center justify-between gap-3 border-t border-white/10 px-7 py-5">
@@ -1039,37 +1105,7 @@ function ChangeSubjectsModal({
         </div>
 
         <div className="scrollbar-hidden overflow-y-auto px-6 py-5">
-          <div className="space-y-6">
-            {subjectGroups.map((group) => (
-              <section key={group.board} className="rounded-3xl border border-white/10 bg-white/[0.03] p-4">
-                <div className="mb-3">
-                  <h3 className="text-lg font-black text-white">{group.board}</h3>
-                  <p className="mt-1 text-sm text-white/38">{group.description}</p>
-                </div>
-
-                <div className="flex flex-wrap gap-2.5">
-                  {group.subjects.map((subject) => {
-                    const selected = draftIds.includes(subject.id);
-                    return (
-                      <button
-                        type="button"
-                        key={subject.id}
-                        onClick={() => toggleSubject(subject.id)}
-                        className={`rounded-full border px-4 py-2 text-sm font-black transition-all duration-200 ease-out hover:-translate-y-0.5 ${
-                          selected
-                            ? "border-cyan-300/40 bg-cyan-300/10 text-cyan-100 shadow-[0_0_18px_rgba(34,211,238,0.10)]"
-                            : "border-white/10 bg-white/[0.035] text-white/55 hover:bg-white/[0.06] hover:text-white"
-                        }`}
-                      >
-                        {selected && <Check className="mr-1 inline-block" size={14} />}
-                        {subject.name}
-                      </button>
-                    );
-                  })}
-                </div>
-              </section>
-            ))}
-          </div>
+          <SubjectLevelSections selectedIds={draftIds} onToggle={toggleSubject} />
         </div>
 
         <div className="border-t border-white/10 px-6 py-5">
@@ -1885,7 +1921,7 @@ function DashboardPaperCard({ paper, completed, saved, onEdit, onToggleComplete 
           {paperSessionLabel(paper) || "Session"}
         </p>
         <p className="mt-0.5 truncate text-xs text-white/32">
-          {paper.subject} · {paper.board}
+          {paper.subject} - {paper.board}
         </p>
       </div>
 
@@ -3943,9 +3979,7 @@ function ProfileSettingsPanel({
   }
 
   async function saveSubjectSelection(ids, cambridgeZone = form.cambridge_zone) {
-    const nextSubjects = allSubjectsList
-      .filter((subject) => ids.includes(subject.id))
-      .map((subject) => ({ board: subject.board, subject: subject.name }));
+    const nextSubjects = subjectProfilePayloadFromIds(ids, allSubjectsList);
     const hasCambridge = nextSubjects.some((subject) => subject.board === "Cambridge");
     await autoSaveProfile({
       subjects: nextSubjects,
@@ -3966,8 +4000,7 @@ function ProfileSettingsPanel({
   async function saveAll(event) {
     event?.preventDefault?.();
     const scrollPosition = { x: window.scrollX, y: window.scrollY };
-    const savedSubjects = selectedSubjects
-      .map((subject) => ({ board: subject.board, subject: subject.name }));
+    const savedSubjects = selectedSubjects.map(subjectToProfileSubject);
     const hasCambridgeSubject = savedSubjects.some((subject) => subject.board === "Cambridge");
 
     await onSaveProfile({
@@ -4153,19 +4186,7 @@ function ProfileSettingsPanel({
                 saveSubjectSelection(draftSelectedIds, zone);
               }} className="mb-5 w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-4 text-white outline-none focus:border-cyan-300 md:max-w-sm"><option value="">Cambridge exam zone</option>{["Zone 1", "Zone 2", "Zone 3", "Zone 4", "Zone 5", "Zone 6"].map((zone) => <option key={zone}>{zone}</option>)}</select>
             )}
-            <div className="space-y-5">
-              {subjectGroups.map((group) => (
-                <section key={group.board}>
-                  <h4 className="mb-2 text-sm font-black text-white/75">{group.board}</h4>
-                  <div className="flex flex-wrap gap-2">
-                    {group.subjects.map((subject) => {
-                      const selected = draftSelectedIds.includes(subject.id);
-                      return <button type="button" key={subject.id} onClick={() => toggleSubjectAutosave(subject.id)} className={`rounded-full border px-4 py-2 text-sm font-black transition-all duration-200 ease-out hover:-translate-y-0.5 ${selected ? "border-cyan-300/40 bg-cyan-300/10 text-cyan-100" : "border-white/10 bg-white/[0.035] text-white/55 hover:bg-white/[0.06]"}`}>{subject.name}</button>;
-                    })}
-                  </div>
-                </section>
-              ))}
-            </div>
+            <SubjectLevelSections selectedIds={draftSelectedIds} onToggle={toggleSubjectAutosave} compact />
           </SettingSection>
 
           <SettingSection id="subject-grades-settings" kicker="Account" title="Subject grades">
@@ -4399,20 +4420,8 @@ function ProfileSettingsPanel({
         </SettingCard>
 
         <SettingCard title="Subjects">
-          <div className="mb-4 flex flex-wrap gap-2">{selectedSubjects.map((subject) => <span key={subject.id} className="rounded-full border border-cyan-300/25 bg-cyan-300/10 px-3 py-2 text-xs font-black text-cyan-100">{subject.name} · {subject.board}</span>)}</div>
-          <div className="space-y-5">
-            {subjectGroups.map((group) => (
-              <section key={group.board}>
-                <h4 className="mb-2 text-sm font-black text-white/75">{group.board}</h4>
-                <div className="flex flex-wrap gap-2">
-                  {group.subjects.map((subject) => {
-                    const selected = draftSelectedIds.includes(subject.id);
-                    return <button key={subject.id} onClick={() => onToggleSubject(subject.id)} className={`rounded-full border px-4 py-2 text-sm font-black transition-all duration-200 ease-out hover:-translate-y-0.5 ${selected ? "border-cyan-300/40 bg-cyan-300/10 text-cyan-100" : "border-white/10 bg-white/[0.035] text-white/55 hover:bg-white/[0.06]"}`}>{subject.name}</button>;
-                  })}
-                </div>
-              </section>
-            ))}
-          </div>
+          <div className="mb-4 flex flex-wrap gap-2">{selectedSubjects.map((subject) => <span key={subject.id} className="rounded-full border border-cyan-300/25 bg-cyan-300/10 px-3 py-2 text-xs font-black text-cyan-100">{subject.name} - {subject.board} - {subject.qualificationLabel}</span>)}</div>
+          <SubjectLevelSections selectedIds={draftSelectedIds} onToggle={onToggleSubject} compact />
         </SettingCard>
 
         <SettingCard title="Plan">
@@ -4733,7 +4742,7 @@ function PastPapersLandingPage({
                     <div>
                       <h2 className="text-xl font-black text-white">{subject.name}</h2>
                       <p className="mt-0.5 text-sm text-white/42">
-                        {subject.board} · {totalMatchingPapers} matching paper{totalMatchingPapers === 1 ? "" : "s"}
+                        {subject.board} - {totalMatchingPapers} matching paper{totalMatchingPapers === 1 ? "" : "s"}
                       </p>
                     </div>
                   </div>
@@ -5905,7 +5914,7 @@ function TopicTestsLandingPage({
                     <div>
                       <h2 className="text-xl font-black text-white">{subject.name}</h2>
                       <p className="mt-0.5 text-sm text-white/42">
-                        {subject.board} · {totalMatchingTests} matching test{totalMatchingTests === 1 ? "" : "s"}
+                        {subject.board} - {totalMatchingTests} matching test{totalMatchingTests === 1 ? "" : "s"}
                       </p>
                     </div>
                   </div>
@@ -5980,7 +5989,7 @@ function TopicTestsLandingPage({
                                 </p>
                                 <p className="mt-1 text-xs font-bold text-white/48">{group.unit}</p>
                                 <p className="mt-0.5 truncate text-xs text-white/32">
-                                  {test.subject} · {test.board}
+                                  {test.subject} - {test.board}
                                 </p>
                               </div>
 
@@ -6033,12 +6042,7 @@ function TopicTestsPanel({
     readStorage("alevel-dojo-saved-topic-tests", [])
   );
 
-  const subjectTopicTests = papers.filter(
-    (paper) =>
-      paper.type === "Topic Test" &&
-      paper.board === subject.board &&
-      paper.subject === subject.name
-  );
+  const subjectTopicTests = getSubjectTopicTests(subject);
 
   useEffect(() => {
     if (persistedPreview?.type !== "topicTest") return;
@@ -7252,9 +7256,7 @@ export default function Dashboard({
   }
 
   async function saveSubjectsFromPicker(nextIds) {
-    const nextSubjects = subjects
-      .filter((subject) => nextIds.includes(subject.id))
-      .map((subject) => ({ board: subject.board, subject: subject.name }));
+    const nextSubjects = subjectProfilePayloadFromIds(nextIds, subjects);
     const hasCambridgeSubject = nextSubjects.some((subject) => subject.board === "Cambridge");
     const nextProfile = {
       ...(dashboardProfile || profile || {}),
@@ -7854,5 +7856,6 @@ export default function Dashboard({
     </div>
   );
 }
+
 
 
