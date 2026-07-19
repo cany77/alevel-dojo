@@ -1,5 +1,6 @@
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
+  BarChart3,
   BookOpen,
   Brain,
   CalendarDays,
@@ -10,7 +11,6 @@ import {
   Layers3,
   Search,
   Sparkles,
-  Timer,
   Zap,
 } from "lucide-react";
 import Watermark from "./Watermark";
@@ -20,6 +20,7 @@ import { supabase } from "./supabaseClient";
 import { logAuthDiagnostic } from "./authDiagnostics";
 import useResendCooldown from "./useResendCooldown";
 import PasswordInput from "./PasswordInput";
+import { CursorGlow, PublicScrollProgress } from "./PublicPageEffects";
 
 function examStartDate(exam) {
   const time = exam.time || "00:00";
@@ -57,30 +58,53 @@ function formatExamDate(exam) {
     year: "numeric",
   });
 }
-function BrowserMockup() {
+function BrowserMockup({ mode = "papers" }) {
+  const labels = {
+    papers: ["Past Papers", "Paper, mark scheme, insert, and PDF Edit", ["Question", "MS", "Edit"]],
+    tests: ["Topic Tests", "Unit sliders with focused topic tests", ["Unit 1", "Paper 2", "Formula"]],
+    boundaries: ["Grade Tools", "Raw marks, predictions, and UMS support", ["A* line", "UMS", "Trend"]],
+    dashboard: ["Student Home", "Subjects, papers, calendar, and progress", ["Physics", "Maths", "Saved"]],
+  };
+  const [label, headline, chips] = labels[mode] || labels.papers;
+
   return (
-    <div className="rounded-[2rem] border-[10px] border-[#030815] bg-white p-5 text-slate-950 shadow-2xl shadow-black/30">
+    <div className="public-product-frame p-5">
       <div className="mb-5 flex items-center justify-between">
         <div className="flex gap-2">
           <span className="h-3 w-3 rounded-full bg-rose-400" />
           <span className="h-3 w-3 rounded-full bg-yellow-400" />
           <span className="h-3 w-3 rounded-full bg-emerald-400" />
         </div>
-        <span className="rounded-full bg-slate-100 px-4 py-1 text-xs font-black text-slate-500">A-Level Dojo</span>
+        <span className="rounded-full bg-cyan-400/10 px-4 py-1 text-xs font-black text-cyan-100">A-Level Dojo</span>
       </div>
-      <div className="rounded-2xl bg-slate-100 p-5">
-        <p className="text-xs font-black text-slate-400">Question 7</p>
-        <p className="mt-2 text-lg font-black leading-7">Explain how this topic links to the exam mark scheme.</p>
+      <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5 text-white">
+        <p className="text-xs font-black uppercase tracking-[0.2em] text-cyan-200">{label}</p>
+        <p className="mt-2 text-lg font-black leading-7">{headline}</p>
       </div>
-      <div className="mt-4 rounded-2xl bg-slate-100 p-5 text-sm leading-7">
-        Use keywords from the syllabus, apply the formula, then compare your answer with the command word.
+      <div className="mt-4 grid grid-cols-3 gap-3 text-center text-sm font-black text-white">
+        {chips.map((item) => <div key={item} className="rounded-xl border border-white/10 bg-white/[0.055] py-3">{item}</div>)}
       </div>
-      <div className="mt-4 grid grid-cols-3 gap-3 text-center text-sm font-black">
-        <div className="rounded-xl bg-slate-100 py-3">Notes</div>
-        <div className="rounded-xl bg-slate-100 py-3">Flashcards</div>
-        <div className="rounded-xl bg-slate-100 py-3">AI Quiz</div>
+      <div className="mt-4 rounded-2xl bg-white p-4 text-slate-950">
+        <div className="mb-3 h-2 w-2/3 rounded-full bg-slate-200" />
+        <div className="space-y-2">
+          <div className="h-2 rounded-full bg-slate-200" />
+          <div className="h-2 rounded-full bg-slate-200" />
+          <div className="h-2 w-3/4 rounded-full bg-slate-200" />
+        </div>
+        <div className="mt-5 h-14 rounded-2xl border-2 border-cyan-400/70 bg-cyan-200/30" />
       </div>
     </div>
+  );
+}
+
+function FeatureMarquee() {
+  const items = ["OxfordAQA Physics", "Cambridge Computer Science", "Edexcel Mathematics", "Formula books", "PDF annotations", "Grade boundaries", "UMS calculator", "Topic tests", "Exam calendar", "Mistakes tracker", "Saved papers", "Mark schemes"];
+  return (
+    <section className="public-marquee" aria-label="A-Level Dojo tools">
+      <div className="public-marquee-track">
+        {[...items, ...items].map((item, index) => <span key={`${item}-${index}`} className="public-marquee-pill"><span />{item}</span>)}
+      </div>
+    </section>
   );
 }
 
@@ -224,22 +248,24 @@ function HomePageUpgradePreview({
   ];
 
   const features = [
-    [FileText, "Real Past Papers", "Actual exam questions with question papers, mark schemes, previews, downloads, and PDF editing."],
-    [BookOpen, "Textbooks + Syllabus", "Authorized syllabus checklists and textbook resources organized by subject, board, unit, and topic."],
-    [Sparkles, "Exam-Technique Notes", "Short notes that summarize chapters and explain how to approach each question type."],
-    [GraduationCap, "Interactive Lessons", "Lessons that explain textbook notes, exam techniques, and common mistakes step by step."],
-    [Layers3, "Flashcards", "Create your own flashcards or revise from pre-made decks matched to the syllabus."],
-    [Brain, "AI Study Partner", "Ask questions, go through papers, get quizzed, visualize topics, and combine topics into one revision session."],
-    [Timer, "Timed Mock Mode", "Practise under timed exam conditions with extra time options and progress tracking."],
-    [CheckCircle2, "Progress Home", "Track completed papers, saved papers, weak topics, and subject progress in your personal Home."],
+    [FileText, "Past papers", "Browse papers with mark schemes, inserts, formula books, PDF editing, saved papers, and completion tracking.", "Available"],
+    [BarChart3, "Grade boundaries", "View raw-mark trends, prediction points, exact tooltips, and UMS or threshold calculators where data exists.", "Available"],
+    [Layers3, "Topic tests", "Practise with generated topic-test libraries grouped by selected subjects and units.", "Available"],
+    [CalendarDays, "Exam calendar", "Official timetable data and personal revision events filtered by selected subjects.", "Premium"],
+    [CheckCircle2, "Mistakes tracker", "Log mistakes, correct methods, review status, and unresolved counts.", "Premium"],
+    [Brain, "AI Tutor", "Personalised tutoring and explanations are planned behind the premium paywall.", "Coming soon"],
+    [GraduationCap, "Interactive lessons", "Guided lessons and worked revision flows are planned as the learning layer expands.", "Coming soon"],
+    [BookOpen, "Notes and textbooks", "Subject notes, textbook links, and syllabus resources can slot into this same public layout.", "Coming soon"],
   ];
 
   return (
-    <div className="min-h-screen bg-[#060816] text-white">
+    <div className="public-page min-h-screen overflow-x-hidden bg-[#060816] text-white">
+      <PublicScrollProgress />
+      <CursorGlow />
       <Watermark />
       <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_16%_10%,rgba(255,92,82,0.16),transparent_26%),radial-gradient(circle_at_80%_16%,rgba(124,58,237,0.18),transparent_28%),radial-gradient(circle_at_70%_82%,rgba(34,211,238,0.08),transparent_24%)]" />
 
-      <header className="sticky top-0 z-50 border-b border-white/10 bg-[#060816]/80 backdrop-blur-xl">
+      <header className="fixed inset-x-0 top-[3px] z-[9998] border-b border-white/10 bg-[#060816]/80 backdrop-blur-xl">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
           <button className="flex items-center gap-3 text-left">
             <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-rose-400 to-violet-500 font-black text-white shadow-lg shadow-rose-500/20">A</div>
@@ -270,8 +296,9 @@ function HomePageUpgradePreview({
           </div>
         </div>
       </header>
+      <div className="h-[73px]" aria-hidden="true" />
 
-      <main className="relative z-10">
+      <main className="public-grid-opening relative z-10">
         <section className="mx-auto grid min-h-[680px] max-w-7xl items-center gap-14 px-6 py-20 lg:grid-cols-[1fr_0.9fr]">
           <div>
             <div className="mb-7 inline-flex items-center gap-2 rounded-full border border-rose-300/20 bg-rose-400/10 px-4 py-2 text-sm font-bold text-rose-200"><Sparkles size={16} />767+ papers across 3 exam boards</div>
@@ -299,7 +326,11 @@ function HomePageUpgradePreview({
           </div>
         </section>
 
-        <section className="mx-auto max-w-7xl px-6 pb-20">
+                <FeatureMarquee />
+      </main>
+
+      <main className="relative z-10">
+        <section className="mx-auto max-w-7xl px-6 pb-20 pt-10 md:pt-16">
           <p className="mb-8 text-sm font-black uppercase tracking-[0.45em] text-white/35">Exam boards</p>
           <div className="grid gap-8 md:grid-cols-3">
             {boards.map(([tag, title, text, color]) => (
@@ -323,18 +354,18 @@ function HomePageUpgradePreview({
               <p className="mt-6 text-base leading-8 text-white/55">Find actual A-Level papers by board, subject, unit, year, month, paper number, and variant. Preview the question paper and mark scheme side by side, then edit the PDF with highlights, drawings, and text boxes.</p>
               <button onClick={onBrowsePapers} className="mt-7 rounded-2xl transition-all duration-200 ease-out hover:-translate-y-0.5 bg-cyan-300 px-7 py-4 font-black text-slate-950">Start with past papers</button>
             </div>
-            <BrowserMockup />
+            <BrowserMockup mode="papers" />
           </div>
         </section>
 
         <section className="mx-auto mt-10 max-w-6xl rounded-[2.5rem] border border-yellow-300/10 bg-yellow-400/5 px-8 py-12 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-yellow-400/[0.07]">
           <div className="grid items-center gap-12 lg:grid-cols-2">
-            <BrowserMockup />
+            <BrowserMockup mode="tests" />
             <div>
-              <p className="mb-8 flex items-center gap-2 text-sm font-black uppercase tracking-[0.28em] text-yellow-200"><BookOpen size={16} />Textbooks + syllabus</p>
-              <h2 className="text-5xl font-black leading-tight text-white">Know exactly what you need to learn.</h2>
-              <p className="mt-6 text-base leading-8 text-white/55">Each subject can include the official syllabus, textbook sections, topic summaries, and chapter-by-chapter checklists so students stop guessing what to revise.</p>
-              <button className="mt-7 rounded-2xl transition-all duration-200 ease-out hover:-translate-y-0.5 bg-yellow-300 px-7 py-4 font-black text-slate-950">Explore syllabus library</button>
+              <p className="mb-8 flex items-center gap-2 text-sm font-black uppercase tracking-[0.28em] text-yellow-200"><Layers3 size={16} />Topic tests + formula sheets</p>
+              <h2 className="text-5xl font-black leading-tight text-white">Practise by unit without digging through folders.</h2>
+              <p className="mt-6 text-base leading-8 text-white/55">Topic tests use the same clean subject structure as past papers, with space for formula sheets, inserts, and focused practice files as the library grows.</p>
+              <button className="mt-7 rounded-2xl transition-all duration-200 ease-out hover:-translate-y-0.5 bg-yellow-300 px-7 py-4 font-black text-slate-950">Explore topic tests</button>
             </div>
           </div>
         </section>
@@ -342,34 +373,60 @@ function HomePageUpgradePreview({
         <section className="mx-auto mt-10 max-w-6xl rounded-[2.5rem] border border-violet-300/10 bg-violet-500/5 px-8 py-12 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-violet-500/[0.07]">
           <div className="grid items-center gap-12 lg:grid-cols-2">
             <div>
-              <p className="mb-8 flex items-center gap-2 text-sm font-black uppercase tracking-[0.28em] text-violet-200"><GraduationCap size={16} />Interactive lessons</p>
-              <h2 className="text-5xl font-black leading-tight text-white">Notes that teach you how to answer.</h2>
-              <p className="mt-6 text-base leading-8 text-white/55">Instead of only reading notes, students can open interactive lessons that explain the idea, show the exam technique, highlight common mistakes, and then give quick questions to test understanding.</p>
-              <button className="mt-7 rounded-2xl transition-all duration-200 ease-out hover:-translate-y-0.5 bg-violet-300 px-7 py-4 font-black text-slate-950">Try lesson mode</button>
+              <p className="mb-8 flex items-center gap-2 text-sm font-black uppercase tracking-[0.28em] text-violet-200"><BarChart3 size={16} />Grade boundaries + UMS</p>
+              <h2 className="text-5xl font-black leading-tight text-white">Turn raw marks into realistic targets.</h2>
+              <p className="mt-6 text-base leading-8 text-white/55">The graph page shows historical raw-mark boundaries, predictions, exact hover tooltips, and UMS or threshold calculators where official data exists.</p>
+              <button className="mt-7 rounded-2xl transition-all duration-200 ease-out hover:-translate-y-0.5 bg-violet-300 px-7 py-4 font-black text-slate-950">View grade tools</button>
             </div>
-            <BrowserMockup />
+            <BrowserMockup mode="boundaries" />
           </div>
         </section>
 
         <section className="mx-auto mt-10 max-w-6xl rounded-[2.5rem] border border-emerald-300/10 bg-emerald-400/5 px-8 py-12 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-emerald-400/[0.07]">
           <div className="grid items-center gap-12 lg:grid-cols-2">
-            <BrowserMockup />
+            <BrowserMockup mode="dashboard" />
             <div>
-              <p className="mb-8 flex items-center gap-2 text-sm font-black uppercase tracking-[0.28em] text-emerald-200"><Brain size={16} />AI study partner</p>
-              <h2 className="text-5xl font-black leading-tight text-white">Combine topics and hit two birds with one stone.</h2>
-              <p className="mt-6 text-base leading-8 text-white/55">The AI study partner can go through papers with you, explain mark schemes, create flashcards, quiz weak areas, visualize tricky topics, and combine unfinished syllabus topics into one targeted revision session.</p>
-              <button className="mt-7 rounded-2xl transition-all duration-200 ease-out hover:-translate-y-0.5 bg-emerald-300 px-7 py-4 font-black text-slate-950">Open AI revision</button>
+              <p className="mb-8 flex items-center gap-2 text-sm font-black uppercase tracking-[0.28em] text-emerald-200"><GraduationCap size={16} />One organised revision Home</p>
+              <h2 className="text-5xl font-black leading-tight text-white">One organised place to pick up the next useful task.</h2>
+              <p className="mt-6 text-base leading-8 text-white/55">Your Home keeps selected subjects, recommended papers, continue revision, upcoming exams, saved papers, and premium tools close without clutter.</p>
+              <button className="mt-7 rounded-2xl transition-all duration-200 ease-out hover:-translate-y-0.5 bg-emerald-300 px-7 py-4 font-black text-slate-950">Open Home</button>
             </div>
           </div>
         </section>
 
         <section id="features" className="mx-auto max-w-7xl px-6 py-20 scroll-mt-24">
-          <div className="mb-12 text-center"><h2 className="text-6xl font-black text-white">All features</h2><p className="mt-5 text-lg text-white/50">The homepage can end with a clean feature grid showing what already exists and what is coming next.</p></div>
+          <div className="mb-12 text-center"><h2 className="text-4xl font-black text-white md:text-6xl">All features</h2><p className="mt-5 text-lg text-white/50">Available tools stay clear, and coming-soon tools are labelled instead of pretending to be finished.</p></div>
           <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-4">
-            {features.map(([Icon, title, text]) => (<div key={title} className="rounded-[2rem] border border-white/10 bg-white/[0.035] p-7 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-white/[0.06]"><div className="mb-6 inline-flex rounded-2xl bg-rose-400/15 p-4 text-white"><Icon size={24} /></div><h3 className="text-xl font-black text-white">{title}</h3><p className="mt-4 text-sm leading-7 text-white/45">{text}</p></div>))}
+            {features.map(([Icon, title, text, status]) => (<div key={title} className="rounded-[2rem] border border-white/10 bg-white/[0.035] p-6 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-white/[0.06]"><div className="mb-5 flex items-center justify-between gap-3"><div className="inline-flex rounded-2xl bg-rose-400/15 p-3 text-white"><Icon size={22} /></div><span className={`rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] ${status === "Available" ? "bg-cyan-400/15 text-cyan-100" : status === "Premium" ? "bg-violet-400/15 text-violet-100" : "bg-white/10 text-white/45"}`}>{status}</span></div><h3 className="text-xl font-black text-white">{title}</h3><p className="mt-4 text-sm leading-7 text-white/45">{text}</p></div>))}
           </div>
         </section>
 
+
+        <section id="pricing" className="mx-auto max-w-7xl px-6 py-20 scroll-mt-24">
+          <div className="mb-10 flex flex-col justify-between gap-5 md:flex-row md:items-end">
+            <div>
+              <p className="text-sm font-black uppercase tracking-[0.32em] text-cyan-200">Pick a plan</p>
+              <h2 className="mt-3 text-4xl font-black text-white md:text-6xl">Start free, upgrade when revision gets serious.</h2>
+            </div>
+            <button type="button" onClick={onOpenPricing} className="rounded-2xl border border-cyan-300/30 bg-cyan-400/10 px-5 py-3 text-sm font-black text-cyan-100 transition hover:bg-cyan-400/15">Open full pricing</button>
+          </div>
+          <div className="grid gap-5 lg:grid-cols-3">
+            {[
+              ["Free", "$0", "start now", "Browse, try the core workflow, and keep revision organised with starter limits.", ["Browse public subjects", "Limited weekly downloads", "Limited PDF editing", "Starter saved papers"], "border-white/10 bg-white/[0.035]", "Start free"],
+              ["Dojo Plus", "$7.99", "per month", "Full access for everyday revision across papers, exports, trackers, and premium tools.", ["Unlimited paper workflow", "PDF export", "Exam calendar", "Mistakes tracker", "Advanced grade tools"], "border-violet-300/35 bg-violet-400/10 shadow-violet-500/20", "Upgrade to Plus", true],
+              ["Exam Season Pass", "$32.99", "one-time", "Full access through 30 June 2026 without a subscription.", ["One payment", "Full premium access", "Built for exam season", "Private Founder plan stays hidden"], "border-cyan-300/35 bg-cyan-400/10 shadow-cyan-500/20", "Get season pass"],
+            ].map(([name, price, cadence, description, points, tone, cta, featured]) => (
+              <article key={name} className={`relative rounded-[2rem] border p-6 shadow-2xl ${tone}`}>
+                {featured && <span className="absolute right-5 top-5 rounded-full bg-gradient-to-r from-violet-400 to-rose-400 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-white">Popular</span>}
+                <h3 className="text-2xl font-black text-white">{name}</h3>
+                <div className="mt-5 flex items-end gap-2"><span className="text-5xl font-black text-white">{price}</span><span className="pb-2 text-sm font-bold text-white/45">{cadence}</span></div>
+                <p className="mt-5 min-h-16 text-sm leading-7 text-white/55">{description}</p>
+                <div className="mt-6 space-y-3">{points.map((point) => <p key={point} className="flex items-center gap-2 text-sm font-bold text-white/70"><CheckCircle2 size={16} className="text-cyan-200" />{point}</p>)}</div>
+                <button type="button" onClick={name === "Free" && !loggedIn ? onOpenAuth : onOpenPricing} className={`mt-7 w-full rounded-2xl px-5 py-3 text-sm font-black transition hover:-translate-y-0.5 ${featured ? "bg-gradient-to-r from-violet-400 to-rose-400 text-white shadow-lg shadow-violet-500/20" : "border border-white/15 bg-white/[0.04] text-white hover:bg-white/[0.08]"}`}>{cta}</button>
+              </article>
+            ))}
+          </div>
+        </section>
         <section id="faqs" className="mx-auto max-w-5xl px-6 py-20 scroll-mt-24">
           <div className="mb-10 text-center"><h2 className="text-4xl font-black text-white md:text-6xl">Frequently asked <span className="bg-gradient-to-r from-rose-300 to-violet-300 bg-clip-text text-transparent">questions</span></h2><p className="mt-4 text-white/50">Everything students need to know before they start.</p></div>
           <div className="overflow-hidden rounded-[2rem] border border-white/10 bg-white/[0.04]">
@@ -475,3 +532,13 @@ export default function HomePage({
     />
   );
 }
+
+
+
+
+
+
+
+
+
+

@@ -445,6 +445,37 @@ function processGcseIgcse({ groups, filePath, parts, stats }) {
   stats.files += 1;
   stats.boards.add(board);
 }
+function processOxfordAqaEnglishLiterature({ groups, filePath, parts, board }) {
+  const sectionFolder = parts[3] || "";
+  if (!/past\s*papers/i.test(sectionFolder)) return;
+
+  const fileNameWithExt = path.basename(filePath);
+  if (!isQuestion(fileNameWithExt) && !isMarkScheme(fileNameWithExt) && !isExaminerReport(fileNameWithExt) && !isGradeBoundary(fileNameWithExt)) return;
+
+  const fileName = path.basename(filePath, path.extname(filePath));
+  const sessionFolder = parts[4] || "";
+  const folderSession = parseSession(sessionFolder);
+  const fileSession = parseSession(fileName);
+  const sessionInfo = fileSession.session ? fileSession : folderSession;
+  if (!sessionInfo.session) return;
+
+  const unit = normalizeUnit(fileName, fileName);
+  if (!/^Unit\s+[1-4]$/i.test(unit)) return;
+
+  const qualification = /^as[-\s]*level/i.test(sectionFolder) ? "AS Level" : "A Level";
+  const key = [board, "English Literature", qualification, sessionInfo.session, sessionInfo.year || "", unit].join("|");
+  const group = createPastPaperGroup(groups, key, {
+    board,
+    subject: "English Literature",
+    qualification,
+    year: sessionInfo.year || "",
+    month: sessionInfo.month,
+    session: sessionInfo.session,
+    unit,
+    paper: unit,
+  });
+  attachFile(group, filePath);
+}
 function processStandard({ groups, topicTests, filePath, parts, board, subject }) {
   const qualificationFolder = parts[3] || "";
   const sectionFolder = String(parts[4] || "").toLowerCase();
@@ -512,7 +543,9 @@ async function main() {
     const board = normalizeBoard(boardFolder);
     const subject = normalizeSubject(subjectFolder);
 
-    if (boardFolder === "cambridge" && subjectFolder === "computer-science") {
+    if (boardFolder === "oxfordaqa" && subjectFolder.toLowerCase() === "english lit") {
+      processOxfordAqaEnglishLiterature({ groups: pastPaperGroups, filePath, parts: paperParts, board });
+    } else if (boardFolder === "cambridge" && subjectFolder === "computer-science") {
       processCambridge({ groups: pastPaperGroups, filePath, parts: paperParts, board, subject });
     } else if (boardFolder === "edexcel") {
       edexcelFiles += 1;

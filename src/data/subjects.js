@@ -50,6 +50,7 @@ export const subjectLevelGroups = [
           subjectEntry({ id: "a-level:oxfordaqa:chemistry", qualification: "a-level", qualificationLabel: aLevelLabel, board: "OxfordAQA", name: "Chemistry", detail: "Physical, organic, inorganic, practical skills", legacyIds: ["chemistry"] }),
           subjectEntry({ id: "a-level:oxfordaqa:biology", qualification: "a-level", qualificationLabel: aLevelLabel, board: "OxfordAQA", name: "Biology", detail: "Cells, molecules, genetics, physiology, ecology", legacyIds: ["biology"] }),
           subjectEntry({ id: "a-level:oxfordaqa:psychology", qualification: "a-level", qualificationLabel: aLevelLabel, board: "OxfordAQA", name: "Psychology", detail: "Research methods, approaches, memory, attachment", legacyIds: ["psychology"] }),
+          subjectEntry({ id: "a-level:oxfordaqa:english-literature", qualification: "a-level", qualificationLabel: aLevelLabel, board: "OxfordAQA", name: "English Literature", detail: "AS Units 1-2, A-Level Units 3-4, comparative literature", legacyIds: ["english-literature", "english-lit"] }),
         ],
       },
       {

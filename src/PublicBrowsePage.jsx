@@ -1,6 +1,7 @@
-import React, { useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { ArrowRight, BookOpen, FileText, Layers3, ListChecks } from "lucide-react";
 import Watermark from "./Watermark";
+import { CursorGlow, PublicScrollProgress } from "./PublicPageEffects";
 
 const subjects = [
   {
@@ -114,10 +115,12 @@ export default function PublicBrowsePage({
   }, [selectedBoard]);
 
   return (
-    <div className="min-h-screen bg-[#060816] text-white">
+    <div className="public-page min-h-screen overflow-x-hidden bg-[#060816] text-white">
+      <PublicScrollProgress />
+      <CursorGlow />
       <Watermark />
       <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_18%_8%,rgba(244,63,94,0.14),transparent_28%),radial-gradient(circle_at_84%_12%,rgba(124,58,237,0.16),transparent_30%),radial-gradient(circle_at_68%_84%,rgba(34,211,238,0.08),transparent_26%)]" />
-      <header className="sticky top-0 z-50 border-b border-white/10 bg-[#060816]/80 backdrop-blur-xl">
+      <header className="fixed inset-x-0 top-[3px] z-[9998] border-b border-white/10 bg-[#060816]/80 backdrop-blur-xl">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-6 py-4">
           <Logo onGoHome={onGoHome} />
 
@@ -164,7 +167,7 @@ export default function PublicBrowsePage({
           </div>
         </div>
       </header>
-
+      <div className="h-[73px]" aria-hidden="true" />
       <main className="relative z-10 mx-auto max-w-6xl px-6 py-16">
         <section className="text-center">
           <p className="text-sm font-black uppercase tracking-[0.26em] text-cyan-200">Public subject browser</p>
@@ -245,3 +248,10 @@ export default function PublicBrowsePage({
     </div>
   );
 }
+
+
+
+
+
+
+
