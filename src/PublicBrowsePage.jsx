@@ -120,7 +120,7 @@ export default function PublicBrowsePage({
       <CursorGlow />
       <Watermark />
       <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_18%_8%,rgba(244,63,94,0.14),transparent_28%),radial-gradient(circle_at_84%_12%,rgba(124,58,237,0.16),transparent_30%),radial-gradient(circle_at_68%_84%,rgba(34,211,238,0.08),transparent_26%)]" />
-      <header className="fixed inset-x-0 top-[3px] z-[9998] border-b border-white/10 bg-[#060816]/80 backdrop-blur-xl">
+      <header className="fixed inset-x-0 top-[2px] z-[9998] border-b border-white/10 bg-[#060816]/80 backdrop-blur-xl">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-6 py-4">
           <Logo onGoHome={onGoHome} />
 
@@ -167,7 +167,7 @@ export default function PublicBrowsePage({
           </div>
         </div>
       </header>
-      <div className="h-[73px]" aria-hidden="true" />
+      <div className="h-[72px]" aria-hidden="true" />
       <main className="relative z-10 mx-auto max-w-6xl px-6 py-16">
         <section className="text-center">
           <p className="text-sm font-black uppercase tracking-[0.26em] text-cyan-200">Public subject browser</p>
@@ -248,6 +248,7 @@ export default function PublicBrowsePage({
     </div>
   );
 }
+
 
 
 

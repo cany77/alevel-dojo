@@ -68,7 +68,7 @@ function BrowserMockup({ mode = "papers" }) {
   const [label, headline, chips] = labels[mode] || labels.papers;
 
   return (
-    <div className="public-product-frame p-5">
+    <div className="public-product-frame p-4 md:p-5">
       <div className="mb-5 flex items-center justify-between">
         <div className="flex gap-2">
           <span className="h-3 w-3 rounded-full bg-rose-400" />
@@ -265,7 +265,7 @@ function HomePageUpgradePreview({
       <Watermark />
       <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_16%_10%,rgba(255,92,82,0.16),transparent_26%),radial-gradient(circle_at_80%_16%,rgba(124,58,237,0.18),transparent_28%),radial-gradient(circle_at_70%_82%,rgba(34,211,238,0.08),transparent_24%)]" />
 
-      <header className="fixed inset-x-0 top-[3px] z-[9998] border-b border-white/10 bg-[#060816]/80 backdrop-blur-xl">
+      <header className="fixed inset-x-0 top-[2px] z-[9998] border-b border-white/10 bg-[#060816]/80 backdrop-blur-xl">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
           <button className="flex items-center gap-3 text-left">
             <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-rose-400 to-violet-500 font-black text-white shadow-lg shadow-rose-500/20">A</div>
@@ -296,7 +296,7 @@ function HomePageUpgradePreview({
           </div>
         </div>
       </header>
-      <div className="h-[73px]" aria-hidden="true" />
+      <div className="h-[72px]" aria-hidden="true" />
 
       <main className="public-grid-opening relative z-10">
         <section className="mx-auto grid min-h-[680px] max-w-7xl items-center gap-14 px-6 py-20 lg:grid-cols-[1fr_0.9fr]">
@@ -346,11 +346,11 @@ function HomePageUpgradePreview({
           </div>
         </section>
 
-        <section className="mx-auto max-w-6xl rounded-[2.5rem] border border-cyan-300/10 bg-cyan-400/5 px-8 py-12 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-cyan-400/[0.07]">
-          <div className="grid items-center gap-12 lg:grid-cols-2">
+        <section className="mx-auto max-w-[1120px] rounded-[2rem] border border-cyan-300/10 bg-cyan-400/5 px-6 py-8 md:px-10 md:py-10 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-cyan-400/[0.07]">
+          <div className="grid items-center gap-8 lg:grid-cols-2 lg:gap-10">
             <div>
               <p className="mb-8 flex items-center gap-2 text-sm font-black uppercase tracking-[0.28em] text-cyan-200"><Search size={16} />Question bank</p>
-              <h2 className="text-5xl font-black leading-tight text-white">Real exam questions, not random practice.</h2>
+              <h2 className="text-4xl font-black leading-tight text-white md:text-[42px]">Real exam questions, not random practice.</h2>
               <p className="mt-6 text-base leading-8 text-white/55">Find actual A-Level papers by board, subject, unit, year, month, paper number, and variant. Preview the question paper and mark scheme side by side, then edit the PDF with highlights, drawings, and text boxes.</p>
               <button onClick={onBrowsePapers} className="mt-7 rounded-2xl transition-all duration-200 ease-out hover:-translate-y-0.5 bg-cyan-300 px-7 py-4 font-black text-slate-950">Start with past papers</button>
             </div>
@@ -358,23 +358,23 @@ function HomePageUpgradePreview({
           </div>
         </section>
 
-        <section className="mx-auto mt-10 max-w-6xl rounded-[2.5rem] border border-yellow-300/10 bg-yellow-400/5 px-8 py-12 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-yellow-400/[0.07]">
-          <div className="grid items-center gap-12 lg:grid-cols-2">
+        <section className="mx-auto mt-8 max-w-[1120px] rounded-[2rem] border border-yellow-300/10 bg-yellow-400/5 px-6 py-8 md:px-10 md:py-10 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-yellow-400/[0.07]">
+          <div className="grid items-center gap-8 lg:grid-cols-2 lg:gap-10">
             <BrowserMockup mode="tests" />
             <div>
               <p className="mb-8 flex items-center gap-2 text-sm font-black uppercase tracking-[0.28em] text-yellow-200"><Layers3 size={16} />Topic tests + formula sheets</p>
-              <h2 className="text-5xl font-black leading-tight text-white">Practise by unit without digging through folders.</h2>
+              <h2 className="text-4xl font-black leading-tight text-white md:text-[42px]">Practise by unit without digging through folders.</h2>
               <p className="mt-6 text-base leading-8 text-white/55">Topic tests use the same clean subject structure as past papers, with space for formula sheets, inserts, and focused practice files as the library grows.</p>
               <button className="mt-7 rounded-2xl transition-all duration-200 ease-out hover:-translate-y-0.5 bg-yellow-300 px-7 py-4 font-black text-slate-950">Explore topic tests</button>
             </div>
           </div>
         </section>
 
-        <section className="mx-auto mt-10 max-w-6xl rounded-[2.5rem] border border-violet-300/10 bg-violet-500/5 px-8 py-12 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-violet-500/[0.07]">
-          <div className="grid items-center gap-12 lg:grid-cols-2">
+        <section className="mx-auto mt-8 max-w-[1120px] rounded-[2rem] border border-violet-300/10 bg-violet-500/5 px-6 py-8 md:px-10 md:py-10 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-violet-500/[0.07]">
+          <div className="grid items-center gap-8 lg:grid-cols-2 lg:gap-10">
             <div>
               <p className="mb-8 flex items-center gap-2 text-sm font-black uppercase tracking-[0.28em] text-violet-200"><BarChart3 size={16} />Grade boundaries + UMS</p>
-              <h2 className="text-5xl font-black leading-tight text-white">Turn raw marks into realistic targets.</h2>
+              <h2 className="text-4xl font-black leading-tight text-white md:text-[42px]">Turn raw marks into realistic targets.</h2>
               <p className="mt-6 text-base leading-8 text-white/55">The graph page shows historical raw-mark boundaries, predictions, exact hover tooltips, and UMS or threshold calculators where official data exists.</p>
               <button className="mt-7 rounded-2xl transition-all duration-200 ease-out hover:-translate-y-0.5 bg-violet-300 px-7 py-4 font-black text-slate-950">View grade tools</button>
             </div>
@@ -382,12 +382,12 @@ function HomePageUpgradePreview({
           </div>
         </section>
 
-        <section className="mx-auto mt-10 max-w-6xl rounded-[2.5rem] border border-emerald-300/10 bg-emerald-400/5 px-8 py-12 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-emerald-400/[0.07]">
-          <div className="grid items-center gap-12 lg:grid-cols-2">
+        <section className="mx-auto mt-8 max-w-[1120px] rounded-[2rem] border border-emerald-300/10 bg-emerald-400/5 px-6 py-8 md:px-10 md:py-10 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-emerald-400/[0.07]">
+          <div className="grid items-center gap-8 lg:grid-cols-2 lg:gap-10">
             <BrowserMockup mode="dashboard" />
             <div>
               <p className="mb-8 flex items-center gap-2 text-sm font-black uppercase tracking-[0.28em] text-emerald-200"><GraduationCap size={16} />One organised revision Home</p>
-              <h2 className="text-5xl font-black leading-tight text-white">One organised place to pick up the next useful task.</h2>
+              <h2 className="text-4xl font-black leading-tight text-white md:text-[42px]">One organised place to pick up the next useful task.</h2>
               <p className="mt-6 text-base leading-8 text-white/55">Your Home keeps selected subjects, recommended papers, continue revision, upcoming exams, saved papers, and premium tools close without clutter.</p>
               <button className="mt-7 rounded-2xl transition-all duration-200 ease-out hover:-translate-y-0.5 bg-emerald-300 px-7 py-4 font-black text-slate-950">Open Home</button>
             </div>
@@ -532,6 +532,8 @@ export default function HomePage({
     />
   );
 }
+
+
 
 
 
