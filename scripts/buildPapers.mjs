@@ -281,6 +281,76 @@ function attachFile(group, filePath) {
   }
 }
 
+
+function oxfordAqaPhysicsChapterMeta(chapter) {
+  if (chapter >= 1 && chapter <= 8) return { level: "AS Level", unit: "Unit 1" };
+  if (chapter >= 9 && chapter <= 14) return { level: "AS Level", unit: "Unit 2" };
+  if (chapter >= 15 && chapter <= 21) return { level: "A Level", unit: "Unit 3" };
+  if (chapter >= 22 && chapter <= 26) return { level: "A Level", unit: "Unit 4" };
+  return null;
+}
+
+function chapterTitleFromFileName(fileName = "") {
+  return normaliseSpaces(
+    path.basename(fileName, path.extname(fileName))
+      .replace(/^Chapter\s*\d+\s*-\s*/i, "")
+      .replace(/\s*-\s*Mark\s*Scheme$/i, "")
+  );
+}
+
+function processOxfordAqaPhysicsTopicTest({ groups, filePath, parts, board, subject }) {
+  const topicRootIndex = parts.findIndex((part) => part.toLowerCase() === "topic-test");
+  if (topicRootIndex === -1) return false;
+
+  const fileName = path.basename(filePath);
+  const chapter = Number(fileName.match(/Chapter\s*(\d{1,2})/i)?.[1]);
+  const meta = oxfordAqaPhysicsChapterMeta(chapter);
+  if (!meta) return true;
+
+  const title = chapterTitleFromFileName(fileName);
+  const unitNumber = meta.unit.match(/\d+/)?.[0] || "";
+  const id = "oxfordaqa-physics-u" + unitNumber + "-c" + String(chapter).padStart(2, "0");
+  const key = board + "|" + subject + "|" + id;
+  if (!groups[key]) {
+    groups[key] = {
+      type: "Topic Test",
+      id,
+      board,
+      subject,
+      qualification: meta.level,
+      level: meta.level,
+      unit: meta.unit,
+      chapter,
+      topic: title,
+      title: "Chapter " + String(chapter).padStart(2, "0") + " - " + title,
+      pdf: "",
+      questionPaper: "",
+      questionUrl: "",
+      markScheme: "",
+      markSchemeUrl: "",
+      fileType: "pdf",
+      questionFileType: "pdf",
+      markSchemeFileType: "pdf",
+    };
+  }
+
+  const group = groups[key];
+  const url = fileUrl(filePath);
+  const type = fileType(filePath);
+  if (isMarkScheme(fileName) || parts.some((part) => /mark[_\s-]*schemes?/i.test(part))) {
+    group.markScheme = url;
+    group.markSchemeUrl = url;
+    group.markSchemeFileType = type;
+  } else {
+    group.pdf = url;
+    group.questionPaper = url;
+    group.questionUrl = url;
+    group.fileType = type;
+    group.questionFileType = type;
+  }
+  return true;
+}
+
 function processCambridge({ groups, filePath, parts, board, subject }) {
   const variantFolder = parts[3] || "";
   const sessionInfo = findSessionPart(parts);
@@ -521,6 +591,7 @@ async function main() {
   const files = await walk(papersRoot);
   const pastPaperGroups = {};
   const topicTests = [];
+  const topicTestGroups = {};
   let edexcelFiles = 0;
   const gcseStats = { files: 0, boards: new Set() };
 
@@ -545,6 +616,8 @@ async function main() {
 
     if (boardFolder === "oxfordaqa" && subjectFolder.toLowerCase() === "english lit") {
       processOxfordAqaEnglishLiterature({ groups: pastPaperGroups, filePath, parts: paperParts, board });
+    } else if (boardFolder === "oxfordaqa" && subjectFolder.toLowerCase() === "physics" && processOxfordAqaPhysicsTopicTest({ groups: topicTestGroups, filePath, parts: paperParts, board, subject })) {
+      // OxfordAQA Physics chapter topic tests live directly under physics/Topic-Test.
     } else if (boardFolder === "cambridge" && subjectFolder === "computer-science") {
       processCambridge({ groups: pastPaperGroups, filePath, parts: paperParts, board, subject });
     } else if (boardFolder === "edexcel") {
@@ -566,7 +639,16 @@ async function main() {
       if (sessionCompare) return sessionCompare;
       return String(a.variant || "").localeCompare(String(b.variant || ""), undefined, { numeric: true });
     });
-  const allPapers = [...pastPapers, ...topicTests];
+  const generatedTopicTests = [...topicTests, ...Object.values(topicTestGroups)]
+    .filter((test) => test.pdf || test.questionPaper)
+    .sort((a, b) => {
+      const subjectCompare = `${a.board}|${a.subject}`.localeCompare(`${b.board}|${b.subject}`);
+      if (subjectCompare) return subjectCompare;
+      const unitCompare = unitSortValue(a.unit) - unitSortValue(b.unit);
+      if (unitCompare) return unitCompare;
+      return Number(a.chapter || 0) - Number(b.chapter || 0) || String(a.title || "").localeCompare(String(b.title || ""));
+    });
+  const allPapers = [...pastPapers, ...generatedTopicTests];
   const edexcelEntries = pastPapers.filter((paper) => paper.board === "Edexcel").length;
   const aLevelEntries = pastPapers.filter((paper) => paper.category !== "GCSE / IGCSE").length;
   const gcseEntries = pastPapers.filter((paper) => paper.category === "GCSE / IGCSE").length;
@@ -581,7 +663,7 @@ async function main() {
   console.log(`GCSE/IGCSE papers: ${gcseEntries}`);
   console.log(`GCSE/IGCSE boards found: ${Array.from(gcseStats.boards).sort().join(", ") || "None"}`);
   console.log(`Generated ${edexcelEntries} Edexcel A-Level past paper entries`);
-  console.log(`Generated ${topicTests.length} topic tests`);
+  console.log(`Generated ${generatedTopicTests.length} topic tests`);
   console.log(`GCSE/IGCSE unpaired Q/MS warnings: ${unpaired.length}`);
   unpaired.slice(0, 25).forEach((paper) => {
     const missing = paper.questionPaper ? "MS" : "Q";

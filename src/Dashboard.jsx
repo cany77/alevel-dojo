@@ -333,6 +333,170 @@ function paperId(paper) {
     .join("|");
 }
 
+function topicTestId(test) {
+  return `topic-test:${paperId(test)}`;
+}
+
+
+function cleanTopicText(value = "") {
+  return String(value || "")
+    .replace(/\.pdf$/i, "")
+    .replace(/[-_]+/g, " ")
+    .trim();
+}
+
+function topicTestQuestionUrl(test = {}) {
+  return test.questionPaper || test.questionUrl || test.pdf || test.url || "";
+}
+
+function topicTestMarkSchemeUrl(test = {}) {
+  return test.markScheme || test.markSchemeUrl || "";
+}
+
+function topicTestTitle(test = {}) {
+  return cleanTopicText(test.title || test.topic || test.unit || test.paper || "Topic test");
+}
+
+function topicTestUnitLabel(test = {}) {
+  if (test.unit || test.paper) return test.unit || test.paper;
+
+  const title = topicTestTitle(test);
+  const text = `${title} ${test.topic || ""} ${test.qualification || ""}`.toLowerCase();
+  const isOxfordChemistry =
+    String(test.board || "").toLowerCase() === "oxfordaqa" &&
+    String(test.subject || "").toLowerCase() === "chemistry";
+
+  if (isOxfordChemistry) {
+    const unitMatch = text.match(/unit\s*([1-9])/);
+    if (unitMatch) return `Unit ${unitMatch[1]}`;
+    if (text.includes("inorganic")) return "Inorganic";
+    if (text.includes("organic")) return "Organic";
+  }
+
+  const unitMatch = text.match(/\bunit\s*([1-9])\b/);
+  if (unitMatch) return `Unit ${unitMatch[1]}`;
+  const paperMatch = text.match(/\bpaper\s*([1-9])\b/);
+  if (paperMatch) return `Paper ${paperMatch[1]}`;
+  const pureMatch = text.match(/\bpure\s*([1-4])\b/);
+  if (pureMatch) return `Pure ${pureMatch[1]}`;
+  const statsMatch = text.match(/\bstatistics\s*([1-3])\b/);
+  if (statsMatch) return `Statistics ${statsMatch[1]}`;
+  const mechanicsMatch = text.match(/\bmechanics\s*([1-3])\b/);
+  if (mechanicsMatch) return `Mechanics ${mechanicsMatch[1]}`;
+  const decisionsMatch = text.match(/\bdecisions?\s*([12])\b/);
+  if (decisionsMatch) return `Decisions ${decisionsMatch[1]}`;
+  return test.qualification ? `${test.qualification} topic tests` : "Topic tests";
+}
+
+function topicTestLevelLabel(test = {}) {
+  const qualification = String(test.qualification || "").toLowerCase();
+  return qualification.includes("as") && !qualification.includes("a level") ? "AS Level" : "A Level";
+}
+
+
+function isOxfordAqaPhysics(subjectOrTest = {}) {
+  return (
+    String(subjectOrTest.board || "").toLowerCase() === "oxfordaqa" &&
+    String(subjectOrTest.subject || subjectOrTest.name || "").toLowerCase() === "physics"
+  );
+}
+
+function isOxfordAqaPhysicsChapterTest(test = {}) {
+  return isOxfordAqaPhysics(test) && Number(test.chapter) >= 1 && Number(test.chapter) <= 26;
+}
+
+function groupOxfordAqaPhysicsTopicTests(tests = []) {
+  const grouped = groupTopicTestsByUnit(
+    tests.filter(isOxfordAqaPhysicsChapterTest).sort((a, b) => Number(a.chapter || 0) - Number(b.chapter || 0))
+  );
+  const groupsByUnit = new Map(grouped.map((group) => [group.unit, group]));
+
+  return [
+    { label: "AS LEVEL", units: ["Unit 1", "Unit 2"] },
+    { label: "A LEVEL", units: ["Unit 3", "Unit 4"] },
+  ]
+    .map((row) => ({
+      label: row.label,
+      groups: row.units.map((unit) => groupsByUnit.get(unit)).filter(Boolean),
+    }))
+    .filter((row) => row.groups.length > 0);
+}
+
+function isOxfordAqaChemistry(subjectOrTest = {}) {
+  return (
+    String(subjectOrTest.board || "").toLowerCase() === "oxfordaqa" &&
+    String(subjectOrTest.subject || subjectOrTest.name || "").toLowerCase() === "chemistry"
+  );
+}
+
+function oxfordAqaChemistryTopicLevel(test = {}) {
+  const text = [topicTestTitle(test), test.topic, test.pdf, test.questionPaper, test.questionUrl]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase()
+    .replace(/\.pdf\b/g, "");
+
+  if (/physical\s+unit\s*[12]\b/.test(text) || /\bas\s+inorganic\b/.test(text) || /\bas\s+organic\b/.test(text)) {
+    return "AS LEVEL";
+  }
+
+  if (/physical\s+unit\s*[34]\b/.test(text) || /\binorganic\s+chemistry\b/.test(text) || /\borganic\s+chemistry\b/.test(text)) {
+    return "A LEVEL";
+  }
+
+  return topicTestLevelLabel(test).toUpperCase();
+}
+function sortOxfordAqaChemistryTopicTests(tests = []) {
+  const order = [
+    "physical unit 1",
+    "physical unit 2",
+    "as inorganic",
+    "as organic",
+    "physical unit 3",
+    "physical unit 4",
+    "inorganic chemistry",
+    "organic chemistry",
+  ];
+
+  return [...tests].sort((a, b) => {
+    const aText = topicTestTitle(a).toLowerCase();
+    const bText = topicTestTitle(b).toLowerCase();
+    const aIndex = order.findIndex((item) => aText.includes(item));
+    const bIndex = order.findIndex((item) => bText.includes(item));
+    return (aIndex === -1 ? 99 : aIndex) - (bIndex === -1 ? 99 : bIndex) || aText.localeCompare(bText);
+  });
+}
+
+function groupOxfordAqaChemistryTopicTests(tests = []) {
+  return ["AS LEVEL", "A LEVEL"]
+    .map((label) => {
+      const rowTests = sortOxfordAqaChemistryTopicTests(
+        tests.filter((test) => oxfordAqaChemistryTopicLevel(test) === label)
+      );
+
+      return {
+        unit: label,
+        label,
+        tests: rowTests,
+        total: rowTests.length,
+        suppressUnitHeading: true,
+      };
+    })
+    .filter((row) => row.tests.length > 0);
+}
+
+function groupTopicTestsByUnit(tests = []) {
+  return sortUnits(unique(tests.map(topicTestUnitLabel))).map((unit) => {
+    const unitTests = tests.filter((test) => topicTestUnitLabel(test) === unit);
+    return {
+      unit,
+      tests: unitTests.slice(0, 12),
+      total: unitTests.length,
+      level: topicTestLevelLabel(unitTests[0]),
+    };
+  });
+}
+
 function isPdfUrl(url = "") {
   return String(url).toLowerCase().split("?")[0].endsWith(".pdf");
 }
@@ -365,7 +529,7 @@ function DocumentFrame({ url, title = "Document" }) {
 
 function paperLabel(paper) {
   if (paper.type === "Topic Test") {
-    return `${paper.subject} • ${paper.topic}`;
+    return `${paper.subject} - ${topicTestTitle(paper)}`;
   }
 
   return `${paper.subject} • ${paper.qualification || ""} • ${
@@ -378,7 +542,7 @@ function paperExportFileName(paper = {}) {
       "A-Level-Dojo",
       paper.subject,
       paper.board,
-      paper.unit || paper.paper,
+      paper.unit || paper.paper || (paper.type === "Topic Test" ? topicTestUnitLabel(paper) : null),
       paper.session || paper.year,
       paper.variant,
     ]
@@ -4766,9 +4930,11 @@ function PastPapersLandingPage({
                       return (
                       <div key={group.unit} className="py-4">
                         <div className="mb-2 flex items-center justify-between gap-3">
-                          <h3 className="text-sm font-black uppercase tracking-[0.16em] text-white/58">
-                            {group.unit}
-                          </h3>
+                          {!group.suppressUnitHeading && (
+                            <h3 className="text-sm font-black uppercase tracking-[0.16em] text-white/58">
+                              {group.unit}
+                            </h3>
+                          )}
                           <div className="flex items-center gap-2">
                             {group.total > group.papers.length && (
                               <button
@@ -5021,6 +5187,7 @@ function PastPapersPanel({
         paper: restoredPaper,
         mode: persistedPreview.mode || "preview",
       });
+      setShowMarkScheme(Boolean(persistedPreview.showMarkScheme));
       setShowMarkScheme(Boolean(persistedPreview.showMarkScheme));
       setShowInsert(Boolean(persistedPreview.showInsert));
     }
@@ -5570,9 +5737,9 @@ function PastPapersPanel({
             </div>
           )}
 
-          <div className="grid gap-3">
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
             {filteredPapers.length === 0 ? (
-              <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-6 text-white/45">
+              <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-6 text-white/45 md:col-span-2 xl:col-span-3 2xl:col-span-4">
                 No past papers found for this search.
               </div>
             ) : (
@@ -5584,10 +5751,15 @@ function PastPapersPanel({
                 const paperInsert = getPaperInsert(paper, subject);
 
                 return (
-                  <div
+                  <article
                     key={id}
-                    className="rounded-2xl border border-white/10 bg-white/[0.035] p-4"
+                    className="relative flex min-h-[260px] flex-col justify-between overflow-hidden rounded-2xl border border-white/10 bg-slate-950/40 p-4 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:border-cyan-300/25 hover:bg-white/[0.055] hover:shadow-[0_0_24px_rgba(34,211,238,0.08)]"
                   >
+                    <FileText
+                      className="pointer-events-none absolute -right-3 top-3 text-cyan-200/[0.07]"
+                      size={82}
+                    />
+                    <div className="relative z-10">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
                         <div className="flex flex-wrap items-center gap-2">
@@ -5661,7 +5833,9 @@ function PastPapersPanel({
                       </div>
                     </div>
 
-                    <div className="mt-4 flex flex-wrap items-center gap-3">
+                    </div>
+
+                    <div className="relative z-10 mt-4 flex flex-wrap items-center gap-2">
                       <button
                        onClick={() =>
   requireLogin(() => {
@@ -5714,7 +5888,7 @@ function PastPapersPanel({
                         </button>
                       )}
                     </div>
-                  </div>
+                  </article>
                 );
               })
             )}
@@ -5754,23 +5928,6 @@ function TopicTestsLandingPage({
   ];
   const hasYearFilter = availableYears.length > 1;
 
-  function topicUnitLabel(test) {
-    if (test.unit || test.paper) return test.unit || test.paper;
-    const text = `${test.title || ""} ${test.topic || ""} ${test.qualification || ""}`.toLowerCase();
-    const unitMatch = text.match(/\bunit\s*([1-9])\b/);
-    if (unitMatch) return `Unit ${unitMatch[1]}`;
-    const paperMatch = text.match(/\bpaper\s*([1-9])\b/);
-    if (paperMatch) return `Paper ${paperMatch[1]}`;
-    const pureMatch = text.match(/\bpure\s*([1-4])\b/);
-    if (pureMatch) return `Pure ${pureMatch[1]}`;
-    const statsMatch = text.match(/\bstatistics\s*([1-3])\b/);
-    if (statsMatch) return `Statistics ${statsMatch[1]}`;
-    const mechanicsMatch = text.match(/\bmechanics\s*([1-3])\b/);
-    if (mechanicsMatch) return `Mechanics ${mechanicsMatch[1]}`;
-    const decisionsMatch = text.match(/\bdecisions?\s*([12])\b/);
-    if (decisionsMatch) return `Decisions ${decisionsMatch[1]}`;
-    return test.qualification ? `${test.qualification} topic tests` : "Topic tests";
-  }
 
   function topicCarouselId(subjectId, unit) {
     return `topic-test-carousel-${subjectId}-${String(unit)
@@ -5795,21 +5952,18 @@ function TopicTestsLandingPage({
   const subjectSections = filteredSubjects
     .map(({ subject, tests }) => {
       const filteredTests = tests.filter((test) => {
-        const text = `${test.title || ""} ${test.topic || ""} ${test.subject || ""} ${test.board || ""} ${test.qualification || ""} ${topicUnitLabel(test)} ${test.year || ""}`.toLowerCase();
+        const text = `${test.title || ""} ${test.topic || ""} ${test.subject || ""} ${test.board || ""} ${test.qualification || ""} ${topicTestUnitLabel(test)} ${test.year || ""}`.toLowerCase();
         return (
           text.includes(search.toLowerCase()) &&
           (yearFilter === "All years" || String(test.year) === String(yearFilter))
         );
       });
 
-      const groups = sortUnits(unique(filteredTests.map(topicUnitLabel))).map((unit) => {
-        const unitTests = filteredTests.filter((test) => topicUnitLabel(test) === unit);
-        return {
-          unit,
-          tests: unitTests.slice(0, 12),
-          total: unitTests.length,
-        };
-      });
+      const groups = isOxfordAqaChemistry(subject)
+        ? groupOxfordAqaChemistryTopicTests(filteredTests)
+        : isOxfordAqaPhysics(subject)
+          ? groupOxfordAqaPhysicsTopicTests(filteredTests).flatMap((row) => row.groups)
+          : groupTopicTestsByUnit(filteredTests);
 
       return {
         subject,
@@ -5900,6 +6054,11 @@ function TopicTestsLandingPage({
           subjectSections.map(({ subject, groups, totalMatchingTests }) => {
             const visual = subjectVisuals[normalizeSubjectName(subject.name)] || defaultSubjectVisual;
             const Icon = visual.icon || Layers3;
+            const groupRows = isOxfordAqaChemistry(subject)
+              ? groups.map((group) => ({ label: group.label, groups: [group] }))
+              : isOxfordAqaPhysics(subject)
+                ? groupOxfordAqaPhysicsTopicTests(groups.flatMap((group) => group.tests))
+                : [{ label: "", groups }];
 
             return (
               <article
@@ -5928,8 +6087,16 @@ function TopicTestsLandingPage({
                   </button>
                 </div>
 
-                <div className="divide-y divide-white/10">
-                  {groups.map((group) => {
+                <div className="space-y-3">
+                  {groupRows.map((row) => (
+                    <div key={row.label || "all"}>
+                      {row.label && (
+                        <p className="px-1 pt-3 text-xs font-black uppercase tracking-[0.18em] text-cyan-100/55">
+                          {row.label}
+                        </p>
+                      )}
+                      <div className="divide-y divide-white/10">
+                  {row.groups.map((group) => {
                     const carouselKey = topicCarouselId(subject.id, group.unit);
 
                     return (
@@ -5973,7 +6140,7 @@ function TopicTestsLandingPage({
                         >
                           {group.tests.map((test) => (
                             <article
-                              key={paperId(test)}
+                              key={topicTestId(test)}
                               className="relative flex min-h-[180px] w-[230px] shrink-0 snap-start flex-col justify-between overflow-hidden rounded-2xl border border-white/10 bg-slate-950/40 p-4 text-left transition-all duration-200 ease-out hover:-translate-y-0.5 hover:border-cyan-300/25 hover:bg-white/[0.055] hover:shadow-[0_0_24px_rgba(34,211,238,0.08)]"
                             >
                               <Layers3
@@ -5985,28 +6152,47 @@ function TopicTestsLandingPage({
                                   <Layers3 size={25} />
                                 </div>
                                 <p className="line-clamp-2 text-sm font-black text-white">
-                                  {test.topic || test.title || group.unit}
+                                  {topicTestTitle(test)}
                                 </p>
-                                <p className="mt-1 text-xs font-bold text-white/48">{group.unit}</p>
+                                <p className="mt-1 text-xs font-bold text-white/48">
+                                  {isOxfordAqaPhysicsChapterTest(test)
+                                    ? `Chapter ${String(test.chapter).padStart(2, "0")} · ${group.unit} · ${topicTestLevelLabel(test)}`
+                                    : group.unit}
+                                </p>
                                 <p className="mt-0.5 truncate text-xs text-white/32">
                                   {test.subject} - {test.board}
                                 </p>
                               </div>
 
-                              <button
-                                type="button"
-                                onClick={() => onOpenTopicTest(subject.id, test)}
-                                className={`relative z-10 mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r ${visual.accent} px-3 py-2 text-xs font-black text-white shadow-lg ${visual.glow} transition-all duration-200 ease-out hover:-translate-y-0.5 hover:brightness-110`}
-                              >
-                                <Eye size={14} />
-                                Start test
-                              </button>
+                              <div className="relative z-10 mt-3 grid gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => onOpenTopicTest(subject.id, test, false)}
+                                  className={`inline-flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r ${visual.accent} px-3 py-2 text-xs font-black text-white shadow-lg ${visual.glow} transition-all duration-200 ease-out hover:-translate-y-0.5 hover:brightness-110`}
+                                >
+                                  <Eye size={14} />
+                                  Questions
+                                </button>
+                                {topicTestMarkSchemeUrl(test) && (
+                                  <button
+                                    type="button"
+                                    onClick={() => onOpenTopicTest(subject.id, test, true)}
+                                    className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.045] px-3 py-2 text-xs font-black text-white/75 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:border-cyan-300/25 hover:bg-cyan-300/10 hover:text-cyan-100"
+                                  >
+                                    <FileText size={14} />
+                                    Mark Scheme
+                                  </button>
+                                )}
+                              </div>
                             </article>
                           ))}
                         </div>
                       </div>
                     );
                   })}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </article>
             );
@@ -6033,6 +6219,7 @@ function TopicTestsPanel({
   const [selectedTopic, setSelectedTopic] = useState("All topics");
   const [selectedQualification, setSelectedQualification] = useState("All qualifications");
   const [completionFilter, setCompletionFilter] = useState("All tests");
+  const [showMarkScheme, setShowMarkScheme] = useState(false);
 
   const [completedTestIds, setCompletedTestIds] = useState(() =>
     readStorage("alevel-dojo-completed-topic-tests", [])
@@ -6045,10 +6232,46 @@ function TopicTestsPanel({
   const subjectTopicTests = getSubjectTopicTests(subject);
 
   useEffect(() => {
+    let cancelled = false;
+    const ids = subjectTopicTests.map(topicTestId);
+
+    async function loadTopicTestProgress() {
+      if (!user?.id || ids.length === 0) return;
+
+      const { data, error } = await supabase
+        .from("topic_test_progress")
+        .select("topic_test_id, saved, completed")
+        .eq("user_id", user.id)
+        .in("topic_test_id", ids);
+
+      if (cancelled || error) return;
+
+      const completedIds = (data || []).filter((row) => row.completed).map((row) => row.topic_test_id);
+      const savedIds = (data || []).filter((row) => row.saved).map((row) => row.topic_test_id);
+
+      if (completedIds.length > 0) {
+        setCompletedTestIds((current) => unique([...current, ...completedIds]));
+        writeStorage("alevel-dojo-completed-topic-tests", unique([...completedTestIds, ...completedIds]));
+      }
+
+      if (savedIds.length > 0) {
+        setSavedTestIds((current) => unique([...current, ...savedIds]));
+        writeStorage("alevel-dojo-saved-topic-tests", unique([...savedTestIds, ...savedIds]));
+      }
+    }
+
+    loadTopicTestProgress();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [subject.id, user?.id]);
+
+  useEffect(() => {
     if (persistedPreview?.type !== "topicTest") return;
 
     const restoredPaper = subjectTopicTests.find(
-      (paper) => paperId(paper) === persistedPreview.paperId
+      (paper) => topicTestId(paper) === persistedPreview.paperId || paperId(paper) === persistedPreview.paperId
     );
 
     if (restoredPaper) {
@@ -6071,21 +6294,24 @@ function TopicTestsPanel({
 
     if (!planAccess?.isPaid) {
       await onRecordUsage(USAGE_EVENT_TYPES.topicTestStart, {
-        id: paperId(paper),
+        id: topicTestId(paper),
         label: paperLabel(paper),
       });
     }
 
     setActivePreview({ paper, mode });
+    setShowMarkScheme(false);
     onPreviewChange({
       type: "topicTest",
-      paperId: paperId(paper),
+      paperId: topicTestId(paper),
       mode,
+      showMarkScheme: false,
     });
   }
 
   function closeTopicPreview() {
     setActivePreview(null);
+    setShowMarkScheme(false);
     onPreviewChange(null);
   }
 
@@ -6100,7 +6326,7 @@ function TopicTestsPanel({
   ];
 
   const filteredTests = subjectTopicTests.filter((paper) => {
-    const id = paperId(paper);
+    const id = topicTestId(paper);
     const isCompleted = completedTestIds.includes(id);
 
     const text = `${paper.board} ${paper.subject} ${paper.topic || ""} ${
@@ -6125,8 +6351,8 @@ function TopicTestsPanel({
 
     action();
     }
-  function toggleCompleted(paper) {
-    const id = paperId(paper);
+  async function toggleCompleted(paper) {
+    const id = topicTestId(paper);
     const alreadyCompleted = completedTestIds.includes(id);
 
     const next = alreadyCompleted
@@ -6135,11 +6361,34 @@ function TopicTestsPanel({
 
     setCompletedTestIds(next);
     writeStorage("alevel-dojo-completed-topic-tests", next);
+
+    if (user?.id) {
+      const saved = savedTestIds.includes(id);
+      if (alreadyCompleted && !saved) {
+        await supabase
+          .from("topic_test_progress")
+          .delete()
+          .eq("user_id", user.id)
+          .eq("topic_test_id", id);
+      } else {
+        await supabase.from("topic_test_progress").upsert(
+          {
+            user_id: user.id,
+            topic_test_id: id,
+            completed: !alreadyCompleted,
+            saved,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "user_id,topic_test_id" }
+        );
+      }
+    }
+
     if (!alreadyCompleted) onAwardXP("complete_topic_test", 40, { key: `topic-test-${id}`, paperId: id, subject: paper.subject, board: paper.board });
   }
 
-  function toggleSaved(paper) {
-    const id = paperId(paper);
+  async function toggleSaved(paper) {
+    const id = topicTestId(paper);
 
     const next = savedTestIds.includes(id)
       ? savedTestIds.filter((item) => item !== id)
@@ -6147,6 +6396,29 @@ function TopicTestsPanel({
 
     setSavedTestIds(next);
     writeStorage("alevel-dojo-saved-topic-tests", next);
+
+    if (user?.id) {
+      const saved = next.includes(id);
+      const completed = completedTestIds.includes(id);
+      if (!saved && !completed) {
+        await supabase
+          .from("topic_test_progress")
+          .delete()
+          .eq("user_id", user.id)
+          .eq("topic_test_id", id);
+      } else {
+        await supabase.from("topic_test_progress").upsert(
+          {
+            user_id: user.id,
+            topic_test_id: id,
+            saved,
+            completed,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "user_id,topic_test_id" }
+        );
+      }
+    }
   }
 
   async function downloadTopicTest(paper, fileUrl) {
@@ -6162,7 +6434,7 @@ function TopicTestsPanel({
 
     if (!planAccess?.isPaid) {
       await onRecordUsage(USAGE_EVENT_TYPES.topicTestStart, {
-        id: paperId(paper),
+        id: topicTestId(paper),
         label: paperLabel(paper),
       });
     }
@@ -6211,24 +6483,44 @@ function TopicTestsPanel({
               </h4>
             </div>
 
+            <div className="flex flex-wrap gap-2">
+              {topicTestMarkSchemeUrl(activePreview.paper) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = !showMarkScheme;
+                    setShowMarkScheme(next);
+                    onPreviewChange({
+                      type: "topicTest",
+                      paperId: topicTestId(activePreview.paper),
+                      mode: activePreview.mode,
+                      showMarkScheme: next,
+                    });
+                  }}
+                  className="rounded-xl bg-white/[0.08] px-4 py-2 text-sm font-black text-white hover:bg-white/[0.12]"
+                >
+                  {showMarkScheme ? "Hide MS" : "Show MS"}
+                </button>
+              )}
             <button
               onClick={closeTopicPreview}
               className="rounded-xl bg-[#ff554f] px-4 py-2 text-sm font-black text-white"
             >
               Close
             </button>
+            </div>
           </div>
 
+          <div className={activePreview.mode === "edit" ? "flex justify-center gap-4 overflow-x-auto" : showMarkScheme && topicTestMarkSchemeUrl(activePreview.paper) ? "grid gap-4 xl:grid-cols-2" : "grid gap-4"}>
+            <div className={activePreview.mode === "edit" ? "w-[720px] shrink-0" : ""}>
+              <p className="mb-2 text-sm font-black text-cyan-200">Topic test</p>
           <PdfViewer
-            fileUrl={
-              activePreview.paper.pdf ||
-              activePreview.paper.questionPaper ||
-              activePreview.paper.markScheme
-            }
+            fileUrl={topicTestQuestionUrl(activePreview.paper)}
             editable={activePreview.mode === "edit"}
             user={user}
-            paperId={paperId(activePreview.paper)}
+            paperId={topicTestId(activePreview.paper)}
             pdfType="topic-test"
+            exportFileName={paperExportFileName(activePreview.paper)}
             canExportPdf={Boolean(planAccess?.canExportPdf)}
             onExportBlocked={() =>
               onOpenPaywall({
@@ -6238,6 +6530,14 @@ function TopicTestsPanel({
               })
             }
           />
+            </div>
+            {showMarkScheme && topicTestMarkSchemeUrl(activePreview.paper) && (
+              <div className={activePreview.mode === "edit" ? "w-[560px] shrink-0" : ""}>
+                <p className="mb-2 text-sm font-black text-emerald-200">Mark scheme</p>
+                <DocumentFrame url={topicTestMarkSchemeUrl(activePreview.paper)} title={`${paperLabel(activePreview.paper)} mark scheme`} />
+              </div>
+            )}
+          </div>
         </div>
       ) : (
         <>
@@ -6296,10 +6596,11 @@ function TopicTestsPanel({
               </div>
             ) : (
               filteredTests.map((paper) => {
-                const id = paperId(paper);
+                const id = topicTestId(paper);
                 const isCompleted = completedTestIds.includes(id);
                 const isSaved = savedTestIds.includes(id);
-                const fileUrl = paper.pdf || paper.questionPaper || paper.markScheme;
+                const fileUrl = topicTestQuestionUrl(paper);
+                const markSchemeUrl = topicTestMarkSchemeUrl(paper);
 
                 return (
                   <div
@@ -6309,7 +6610,7 @@ function TopicTestsPanel({
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
                         <h4 className="font-black text-white">
-                          {paper.topic || paper.title || paperLabel(paper)}
+                          {topicTestTitle(paper)}
                         </h4>
 
                         <p className="mt-1 text-sm text-white/40">
@@ -6361,7 +6662,7 @@ function TopicTestsPanel({
                         className="inline-flex items-center gap-2 rounded-xl bg-cyan-300 px-4 py-2 text-sm font-black text-slate-950 hover:bg-cyan-200"
                       >
                         <Eye size={16} />
-                        Preview Topic Test
+                        Open topic test
                       </button>
 
                       <button
@@ -6386,7 +6687,21 @@ function TopicTestsPanel({
                           className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2 text-sm font-black text-slate-950"
                         >
                           <Download size={16} />
-                          Download
+                          Open original
+                        </button>
+                      )}
+
+                      {markSchemeUrl && (
+                        <button
+                          onClick={() =>
+                            requireLogin(() => {
+                              downloadTopicTest(paper, markSchemeUrl);
+                            })
+                          }
+                          className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2 text-sm font-black text-slate-950"
+                        >
+                          <Download size={16} />
+                          Open MS
                         </button>
                       )}
                     </div>
@@ -7354,7 +7669,7 @@ export default function Dashboard({
     }
   }
 
-  async function openTopicTestFromLanding(subjectId, test) {
+  async function openTopicTestFromLanding(subjectId, test, showMarkScheme = false) {
     if (!subjectId || !test) return;
     if (!planAccess.canStartTopicTest) {
       onOpenPaywall({
@@ -7367,7 +7682,7 @@ export default function Dashboard({
 
     if (!planAccess.isPaid) {
       await recordDashboardUsage(USAGE_EVENT_TYPES.topicTestStart, {
-        id: paperId(test),
+        id: topicTestId(test),
         label: paperLabel(test),
       });
     }
@@ -7379,8 +7694,9 @@ export default function Dashboard({
       openedPaper: null,
       openedTopicTest: {
         type: "topicTest",
-        paperId: paperId(test),
-        mode: "preview",
+        paperId: topicTestId(test),
+        mode: "edit",
+        showMarkScheme: Boolean(showMarkScheme),
       },
     });
   }
