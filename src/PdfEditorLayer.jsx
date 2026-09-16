@@ -203,6 +203,7 @@ export default function PdfEditorLayer({
   const annotationsRef = useRef([]);
   const isErasingRef = useRef(false);
   const erasedDuringStrokeRef = useRef(new Set());
+  const pendingScrollRestoreRef = useRef(null);
 
   const [tool, setTool] = useState("select");
   const [activeFlyout, setActiveFlyout] = useState(null);
@@ -230,20 +231,101 @@ export default function PdfEditorLayer({
     () => paperId || storageKey || "default-pdf",
     [paperId, storageKey]
   );
+  const workspaceKey = useMemo(
+    () => `pdf-editor-workspace-${user?.id || "anon"}-${annotationKey}-${pdfType}`,
+    [annotationKey, pdfType, user?.id]
+  );
 
   useEffect(() => {
     annotationsRef.current = annotations;
   }, [annotations]);
 
   const savePayload = useCallback(
-    (nextAnnotations = annotations) => ({
+    (nextAnnotations = annotationsRef.current) => ({
       pages: nextAnnotations.reduce((pages, annotation) => {
         const pageNumber = String(annotation.pageNumber || annotation.page || 1);
         pages[pageNumber] = [...(pages[pageNumber] || []), normalizeAnnotationForSave(annotation)];
         return pages;
       }, {}),
     }),
-    [annotations]
+    []
+  );
+
+  const findScrollContainer = useCallback(() => {
+    const panel = markerRef.current?.closest(".question-editor-panel");
+    if (!panel) return null;
+    return (
+      panel.querySelector(".rpv-core__inner-pages") ||
+      panel.querySelector('[data-testid="core__inner-pages"]') ||
+      panel.querySelector(".rpv-core__viewer") ||
+      panel
+    );
+  }, []);
+
+  const currentVisiblePage = useCallback(() => {
+    if (!pageElements.length) return 1;
+    const viewportMid = window.innerHeight / 2;
+    let best = { pageNumber: 1, distance: Number.POSITIVE_INFINITY };
+    pageElements.forEach((pageElement) => {
+      const rect = pageElement.getBoundingClientRect();
+      const pageMid = rect.top + rect.height / 2;
+      const distance = Math.abs(pageMid - viewportMid);
+      if (distance < best.distance) {
+        best = { pageNumber: pageNumberFromLayer(pageElement), distance };
+      }
+    });
+    return best.pageNumber;
+  }, [pageElements]);
+
+  const writeEditorWorkspaceDraft = useCallback(
+    (nextAnnotations = annotationsRef.current) => {
+      const annotationPayload = savePayload(nextAnnotations);
+      try {
+        localStorage.setItem(`pdf-editor-${annotationKey}-${pdfType}`, JSON.stringify(annotationPayload));
+      } catch {}
+
+      const scrollContainer = findScrollContainer();
+      const draftPayload = {
+        version: 1,
+        savedAt: new Date().toISOString(),
+        annotationPayload,
+        view: {
+          pageNumber: currentVisiblePage(),
+          scrollTop: scrollContainer?.scrollTop || 0,
+          scrollLeft: scrollContainer?.scrollLeft || 0,
+        },
+        ui: {
+          tool: activeToolRef.current || tool,
+          strokeColor,
+          strokeWidth,
+          highlightColor,
+          shapeType,
+          textColor,
+          fontSize,
+          eraserSize,
+        },
+      };
+
+      try {
+        sessionStorage.setItem(workspaceKey, JSON.stringify(draftPayload));
+      } catch {}
+    },
+    [
+      annotationKey,
+      currentVisiblePage,
+      eraserSize,
+      findScrollContainer,
+      fontSize,
+      highlightColor,
+      pdfType,
+      savePayload,
+      shapeType,
+      strokeColor,
+      strokeWidth,
+      textColor,
+      tool,
+      workspaceKey,
+    ]
   );
 
   const writeAnnotations = useCallback(
@@ -256,6 +338,8 @@ export default function PdfEditorLayer({
           JSON.stringify(payload)
         );
       } catch {}
+
+      writeEditorWorkspaceDraft(nextAnnotations);
 
       if (!user?.id || !paperId) {
         setSaveStatus("Saved locally");
@@ -285,7 +369,7 @@ export default function PdfEditorLayer({
         );
       }
     },
-    [annotationKey, annotations, paperId, pdfType, savePayload, user?.id]
+    [annotationKey, annotations, paperId, pdfType, savePayload, user?.id, writeEditorWorkspaceDraft]
   );
 
   const resetPaperAnnotations = useCallback(async () => {
@@ -306,6 +390,7 @@ export default function PdfEditorLayer({
 
     try {
       localStorage.removeItem(`pdf-editor-${annotationKey}-${pdfType}`);
+      sessionStorage.removeItem(workspaceKey);
     } catch {}
 
     if (user?.id && paperId) {
@@ -327,7 +412,7 @@ export default function PdfEditorLayer({
     }
 
     setSaveStatus("Saved");
-  }, [annotationKey, paperId, pdfType, user?.id]);
+  }, [annotationKey, paperId, pdfType, user?.id, workspaceKey]);
 
   const scheduleSave = useCallback(
     (nextAnnotations) => {
@@ -554,8 +639,30 @@ export default function PdfEditorLayer({
 
     async function loadAnnotations() {
       let savedPayload = null;
+      let workspaceDraft = null;
 
-      if (user?.id && paperId) {
+      try {
+        const savedWorkspace = sessionStorage.getItem(workspaceKey);
+        workspaceDraft = savedWorkspace ? JSON.parse(savedWorkspace) : null;
+        if (workspaceDraft?.annotationPayload?.pages) savedPayload = workspaceDraft.annotationPayload;
+      } catch {
+        try {
+          sessionStorage.removeItem(workspaceKey);
+        } catch {}
+      }
+
+      if (!savedPayload) {
+        try {
+          const saved = localStorage.getItem(`pdf-editor-${annotationKey}-${pdfType}`);
+          savedPayload = saved ? JSON.parse(saved) : null;
+        } catch {
+          try {
+            localStorage.removeItem(`pdf-editor-${annotationKey}-${pdfType}`);
+          } catch {}
+        }
+      }
+
+      if (!savedPayload && user?.id && paperId) {
         const { data, error } = await supabase
           .from("pdf_annotations")
           .select("annotations")
@@ -567,14 +674,25 @@ export default function PdfEditorLayer({
         if (!error && data?.annotations) savedPayload = data.annotations;
       }
 
-      if (!savedPayload) {
-        try {
-          const saved = localStorage.getItem(`pdf-editor-${annotationKey}-${pdfType}`);
-          savedPayload = saved ? JSON.parse(saved) : null;
-        } catch {}
+      if (!isMounted) return;
+
+      if (workspaceDraft?.ui) {
+        const ui = workspaceDraft.ui;
+        const restoredTool = workingToolFlyouts.includes(ui.tool) || ui.tool === "select" ? ui.tool : "select";
+        activeToolRef.current = restoredTool;
+        setTool(restoredTool);
+        setStrokeColor(ui.strokeColor || "#22d3ee");
+        setStrokeWidth(Number(ui.strokeWidth) || 3);
+        setHighlightColor(ui.highlightColor || compactHighlightColors[0]);
+        setShapeType(ui.shapeType || "rect");
+        setTextColor(ui.textColor || "#0f172a");
+        setFontSize(Number(ui.fontSize) || 18);
+        setEraserSize(ui.eraserSize || "medium");
       }
 
-      if (!isMounted) return;
+      if (workspaceDraft?.view) {
+        pendingScrollRestoreRef.current = workspaceDraft.view;
+      }
 
       const loaded =
         savedPayload?.pages && typeof savedPayload.pages === "object"
@@ -589,6 +707,7 @@ export default function PdfEditorLayer({
           : [];
 
       setAnnotations(loaded);
+      annotationsRef.current = loaded;
       historyRef.current = [JSON.stringify(loaded)];
       historyIndexRef.current = 0;
       setSaveStatus(loaded.length ? "Saved" : "Ready");
@@ -600,7 +719,7 @@ export default function PdfEditorLayer({
       isMounted = false;
       window.clearTimeout(saveTimerRef.current);
     };
-  }, [annotationKey, paperId, pdfType, user?.id]);
+  }, [annotationKey, paperId, pdfType, user?.id, workspaceKey]);
 
   useEffect(() => {
     function handleGlobalPointerMove(event) {
@@ -642,6 +761,50 @@ export default function PdfEditorLayer({
     };
   }, [commitAnnotations, pushHistory, scheduleSave, stopCurrentSession]);
 
+  useEffect(() => {
+    const pending = pendingScrollRestoreRef.current;
+    if (!pending) return;
+    const scrollContainer = findScrollContainer();
+    if (!scrollContainer) return;
+
+    const frame = window.requestAnimationFrame(() => {
+      scrollContainer.scrollTop = Number(pending.scrollTop) || 0;
+      scrollContainer.scrollLeft = Number(pending.scrollLeft) || 0;
+      pendingScrollRestoreRef.current = null;
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [annotationKey, findScrollContainer, pageElements.length]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      writeEditorWorkspaceDraft(annotationsRef.current);
+    }, 500);
+
+    return () => window.clearTimeout(timer);
+  }, [eraserSize, fontSize, highlightColor, shapeType, strokeColor, strokeWidth, textColor, tool, writeEditorWorkspaceDraft]);
+
+  useEffect(() => {
+    function flushDraft() {
+      window.clearTimeout(saveTimerRef.current);
+      writeEditorWorkspaceDraft(annotationsRef.current);
+    }
+
+    function handleVisibilityChange() {
+      if (document.hidden) flushDraft();
+    }
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("pagehide", flushDraft);
+    window.addEventListener("beforeunload", flushDraft);
+
+    return () => {
+      flushDraft();
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("pagehide", flushDraft);
+      window.removeEventListener("beforeunload", flushDraft);
+    };
+  }, [writeEditorWorkspaceDraft]);
   function beginAnnotation(event, pageNumber, pageElement, pageSize) {
     if (!pageElement) return;
     const point = normalizePoint(getPointer(event, pageElement), pageSize);

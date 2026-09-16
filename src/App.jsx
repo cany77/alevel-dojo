@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { papers } from "./papersData";
 import MockTimer from "./MockTimer";
 import { supabase } from "./supabaseClient";
@@ -243,6 +243,16 @@ export default function ALevelDojo() {
   const [isAuthCallback, setIsAuthCallback] = useState(
     () => window.location.pathname === "/auth/callback"
   );
+  const userRef = useRef(null);
+  const authCheckedRef = useRef(false);
+
+  useEffect(() => {
+    userRef.current = user;
+  }, [user]);
+
+  useEffect(() => {
+    authCheckedRef.current = authChecked;
+  }, [authChecked]);
   async function loadCompletedPapers(userId) {
   const { data, error } = await supabase
     .from("completed_papers")
@@ -368,12 +378,32 @@ async function loadProfile(currentUser) {
     data: { subscription },
   } = supabase.auth.onAuthStateChange((event, session) => {
     const currentUser = session?.user ?? null;
+    const previousUserId = userRef.current?.id || null;
+    const nextUserId = currentUser?.id || null;
+    const isSameUserRefresh =
+      currentUser &&
+      authCheckedRef.current &&
+      previousUserId === nextUserId &&
+      (event === "TOKEN_REFRESHED" || event === "SIGNED_IN" || event === "USER_UPDATED");
 
     if (event === "PASSWORD_RECOVERY") {
       setIsPasswordRecovery(true);
       if (window.location.pathname !== "/reset-password") {
         window.history.replaceState({}, "", "/reset-password");
       }
+    }
+
+    if (isSameUserRefresh) {
+      setUser(currentUser);
+      setAuthChecked(true);
+      authCheckedRef.current = true;
+      return;
+    }
+
+    if (!currentUser && event !== "SIGNED_OUT") {
+      setAuthChecked(true);
+      authCheckedRef.current = true;
+      return;
     }
 
     setUser(currentUser);
@@ -390,6 +420,7 @@ async function loadProfile(currentUser) {
     }
 
     setAuthChecked(true);
+    authCheckedRef.current = true;
   });
 
   return () => {

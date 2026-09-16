@@ -5603,6 +5603,7 @@ function PastPapersPanel({
                     exportFileName={paperExportFileName(activePreview.paper)}
                     canExportPdf={Boolean(planAccess?.canExportPdf)}
                     onExportBlocked={() => showPaperPaywall("export")}
+                    onGoBack={closePaperPreview}
                   />
                 ) : (
                   <DocumentFrame
@@ -5646,6 +5647,7 @@ function PastPapersPanel({
                 <PdfViewer
                     fileUrl={activePaperInsert.url}
                     editable={false}
+                    onGoBack={closePaperPreview}
                 />
                 </div>
             )}
@@ -6529,6 +6531,7 @@ function TopicTestsPanel({
                 usageText: "Free plan: PDF exports are locked.",
               })
             }
+            onGoBack={closeTopicPreview}
           />
             </div>
             {showMarkScheme && topicTestMarkSchemeUrl(activePreview.paper) && (
