@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   BarChart3,
   BookOpen,
@@ -9,7 +9,6 @@ import {
   FileText,
   GraduationCap,
   Layers3,
-  Search,
   Sparkles,
   Zap,
 } from "lucide-react";
@@ -20,6 +19,8 @@ import { supabase } from "./supabaseClient";
 import { logAuthDiagnostic } from "./authDiagnostics";
 import useResendCooldown from "./useResendCooldown";
 import PasswordInput from "./PasswordInput";
+import HowItWorks from "./HowItWorks";
+import TurnstileVerification from "./TurnstileVerification";
 import { CursorGlow, PublicScrollProgress } from "./PublicPageEffects";
 
 function examStartDate(exam) {
@@ -58,45 +59,6 @@ function formatExamDate(exam) {
     year: "numeric",
   });
 }
-function BrowserMockup({ mode = "papers" }) {
-  const labels = {
-    papers: ["Past Papers", "Paper, mark scheme, insert, and PDF Edit", ["Question", "MS", "Edit"]],
-    tests: ["Topic Tests", "Unit sliders with focused topic tests", ["Unit 1", "Paper 2", "Formula"]],
-    boundaries: ["Grade Tools", "Raw marks, predictions, and UMS support", ["A* line", "UMS", "Trend"]],
-    dashboard: ["Student Home", "Subjects, papers, calendar, and progress", ["Physics", "Maths", "Saved"]],
-  };
-  const [label, headline, chips] = labels[mode] || labels.papers;
-
-  return (
-    <div className="public-product-frame p-4 md:p-5">
-      <div className="mb-5 flex items-center justify-between">
-        <div className="flex gap-2">
-          <span className="h-3 w-3 rounded-full bg-rose-400" />
-          <span className="h-3 w-3 rounded-full bg-yellow-400" />
-          <span className="h-3 w-3 rounded-full bg-emerald-400" />
-        </div>
-        <span className="rounded-full bg-cyan-400/10 px-4 py-1 text-xs font-black text-cyan-100">A-Level Dojo</span>
-      </div>
-      <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5 text-white">
-        <p className="text-xs font-black uppercase tracking-[0.2em] text-cyan-200">{label}</p>
-        <p className="mt-2 text-lg font-black leading-7">{headline}</p>
-      </div>
-      <div className="mt-4 grid grid-cols-3 gap-3 text-center text-sm font-black text-white">
-        {chips.map((item) => <div key={item} className="rounded-xl border border-white/10 bg-white/[0.055] py-3">{item}</div>)}
-      </div>
-      <div className="mt-4 rounded-2xl bg-white p-4 text-slate-950">
-        <div className="mb-3 h-2 w-2/3 rounded-full bg-slate-200" />
-        <div className="space-y-2">
-          <div className="h-2 rounded-full bg-slate-200" />
-          <div className="h-2 rounded-full bg-slate-200" />
-          <div className="h-2 w-3/4 rounded-full bg-slate-200" />
-        </div>
-        <div className="mt-5 h-14 rounded-2xl border-2 border-cyan-400/70 bg-cyan-200/30" />
-      </div>
-    </div>
-  );
-}
-
 function FeatureMarquee() {
   const items = ["OxfordAQA Physics", "Cambridge Computer Science", "Edexcel Mathematics", "Formula books", "PDF annotations", "Grade boundaries", "UMS calculator", "Topic tests", "Exam calendar", "Mistakes tracker", "Saved papers", "Mark schemes"];
   return (
@@ -125,6 +87,9 @@ function HomePageUpgradePreview({
   onLogout = () => {},
 }) {
   const [openFaq, setOpenFaq] = useState(0);
+  const [captchaToken, setCaptchaToken] = useState("");
+  const [captchaVersion, setCaptchaVersion] = useState(0);
+  const submitting = useRef(false);
   const [authMode, setAuthMode] = useState("signin");
   const [name, setName] = useState("");
   const [inlineAuthStatus, setInlineAuthStatus] = useState("idle");
@@ -159,6 +124,9 @@ function HomePageUpgradePreview({
   }
 
   function changeInlineAuthMode(nextMode) {
+    if (submitting.current) return;
+    setCaptchaToken("");
+    setCaptchaVersion((version) => version + 1);
     setAuthMode(nextMode);
     setInlineConfirmPassword("");
     setInlineAuthStatus("idle");
@@ -166,7 +134,10 @@ function HomePageUpgradePreview({
   }
 
   async function handleInlineAuth() {
-    if (password !== inlineConfirmPassword) {
+    if (submitting.current || !captchaToken) return;
+    submitting.current = true;
+    try {
+    if (authMode === "signup" && password !== inlineConfirmPassword) {
       setInlineAuthStatus("error");
       setInlineAuthMessage("Passwords do not match.");
       return;
@@ -175,7 +146,7 @@ function HomePageUpgradePreview({
     if (authMode === "signin") {
       setInlineAuthStatus("loading");
       setInlineAuthMessage("");
-      const result = await signIn();
+      const result = await signIn(captchaToken);
       if (!result?.ok) {
         setInlineAuthStatus("error");
         setInlineAuthMessage(result?.error || "Could not sign in.");
@@ -185,7 +156,7 @@ function HomePageUpgradePreview({
 
     setInlineAuthStatus("loading");
     setInlineAuthMessage("");
-    const result = await signUp(name);
+    const result = await signUp(name, captchaToken);
     if (!result?.ok) {
       setInlineAuthStatus("error");
       setInlineAuthMessage(result?.error || "Could not create your account.");
@@ -195,6 +166,15 @@ function HomePageUpgradePreview({
       setConfirmationEmail(result.email || email.trim());
       setInlineAuthStatus("confirmation");
       setInlineAuthMessage("Check your email to confirm your account.");
+    }
+    } catch {
+      setInlineAuthStatus("error");
+      setInlineAuthMessage("Could not connect. Please try again.");
+    } finally {
+      submitting.current = false;
+      setInlineAuthStatus(status => status === "loading" ? "idle" : status);
+      setCaptchaToken("");
+      setCaptchaVersion((version) => version + 1);
     }
   }
 
@@ -346,53 +326,7 @@ function HomePageUpgradePreview({
           </div>
         </section>
 
-        <section className="mx-auto max-w-[1120px] rounded-[2rem] border border-cyan-300/10 bg-cyan-400/5 px-6 py-8 md:px-10 md:py-10 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-cyan-400/[0.07]">
-          <div className="grid items-center gap-8 lg:grid-cols-2 lg:gap-10">
-            <div>
-              <p className="mb-8 flex items-center gap-2 text-sm font-black uppercase tracking-[0.28em] text-cyan-200"><Search size={16} />Question bank</p>
-              <h2 className="text-4xl font-black leading-tight text-white md:text-[42px]">Real exam questions, not random practice.</h2>
-              <p className="mt-6 text-base leading-8 text-white/55">Find actual A-Level papers by board, subject, unit, year, month, paper number, and variant. Preview the question paper and mark scheme side by side, then edit the PDF with highlights, drawings, and text boxes.</p>
-              <button onClick={onBrowsePapers} className="mt-7 rounded-2xl transition-all duration-200 ease-out hover:-translate-y-0.5 bg-cyan-300 px-7 py-4 font-black text-slate-950">Start with past papers</button>
-            </div>
-            <BrowserMockup mode="papers" />
-          </div>
-        </section>
-
-        <section className="mx-auto mt-8 max-w-[1120px] rounded-[2rem] border border-yellow-300/10 bg-yellow-400/5 px-6 py-8 md:px-10 md:py-10 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-yellow-400/[0.07]">
-          <div className="grid items-center gap-8 lg:grid-cols-2 lg:gap-10">
-            <BrowserMockup mode="tests" />
-            <div>
-              <p className="mb-8 flex items-center gap-2 text-sm font-black uppercase tracking-[0.28em] text-yellow-200"><Layers3 size={16} />Topic tests + formula sheets</p>
-              <h2 className="text-4xl font-black leading-tight text-white md:text-[42px]">Practise by unit without digging through folders.</h2>
-              <p className="mt-6 text-base leading-8 text-white/55">Topic tests use the same clean subject structure as past papers, with space for formula sheets, inserts, and focused practice files as the library grows.</p>
-              <button className="mt-7 rounded-2xl transition-all duration-200 ease-out hover:-translate-y-0.5 bg-yellow-300 px-7 py-4 font-black text-slate-950">Explore topic tests</button>
-            </div>
-          </div>
-        </section>
-
-        <section className="mx-auto mt-8 max-w-[1120px] rounded-[2rem] border border-violet-300/10 bg-violet-500/5 px-6 py-8 md:px-10 md:py-10 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-violet-500/[0.07]">
-          <div className="grid items-center gap-8 lg:grid-cols-2 lg:gap-10">
-            <div>
-              <p className="mb-8 flex items-center gap-2 text-sm font-black uppercase tracking-[0.28em] text-violet-200"><BarChart3 size={16} />Grade boundaries + UMS</p>
-              <h2 className="text-4xl font-black leading-tight text-white md:text-[42px]">Turn raw marks into realistic targets.</h2>
-              <p className="mt-6 text-base leading-8 text-white/55">The graph page shows historical raw-mark boundaries, predictions, exact hover tooltips, and UMS or threshold calculators where official data exists.</p>
-              <button className="mt-7 rounded-2xl transition-all duration-200 ease-out hover:-translate-y-0.5 bg-violet-300 px-7 py-4 font-black text-slate-950">View grade tools</button>
-            </div>
-            <BrowserMockup mode="boundaries" />
-          </div>
-        </section>
-
-        <section className="mx-auto mt-8 max-w-[1120px] rounded-[2rem] border border-emerald-300/10 bg-emerald-400/5 px-6 py-8 md:px-10 md:py-10 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-emerald-400/[0.07]">
-          <div className="grid items-center gap-8 lg:grid-cols-2 lg:gap-10">
-            <BrowserMockup mode="dashboard" />
-            <div>
-              <p className="mb-8 flex items-center gap-2 text-sm font-black uppercase tracking-[0.28em] text-emerald-200"><GraduationCap size={16} />One organised revision Home</p>
-              <h2 className="text-4xl font-black leading-tight text-white md:text-[42px]">One organised place to pick up the next useful task.</h2>
-              <p className="mt-6 text-base leading-8 text-white/55">Your Home keeps selected subjects, recommended papers, continue revision, upcoming exams, saved papers, and premium tools close without clutter.</p>
-              <button className="mt-7 rounded-2xl transition-all duration-200 ease-out hover:-translate-y-0.5 bg-emerald-300 px-7 py-4 font-black text-slate-950">Open Home</button>
-            </div>
-          </div>
-        </section>
+        <HowItWorks />
 
         <section id="features" className="mx-auto max-w-7xl px-6 py-20 scroll-mt-24">
           <div className="mb-12 text-center"><h2 className="text-4xl font-black text-white md:text-6xl">All features</h2><p className="mt-5 text-lg text-white/50">Available tools stay clear, and coming-soon tools are labelled instead of pretending to be finished.</p></div>
@@ -449,7 +383,7 @@ function HomePageUpgradePreview({
   onChange={(e) => setEmail(e.target.value)}
   placeholder="Email address"
   className="mb-3 w-full rounded-2xl border border-white/15 bg-slate-950 px-4 py-4 text-white outline-none placeholder:text-white/30 focus:border-rose-300"
-/><PasswordInput value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password" autoComplete={authMode === "signup" ? "new-password" : "current-password"} className="mb-3" inputClassName="w-full rounded-2xl border border-white/15 bg-slate-950 px-4 py-4 pr-12 text-white outline-none placeholder:text-white/30 focus:border-rose-300" /><PasswordInput value={inlineConfirmPassword} onChange={(e) => setInlineConfirmPassword(e.target.value)} placeholder="Confirm password" autoComplete={authMode === "signup" ? "new-password" : "current-password"} className="mb-4" inputClassName="w-full rounded-2xl border border-white/15 bg-slate-950 px-4 py-4 pr-12 text-white outline-none placeholder:text-white/30 focus:border-rose-300" /><button type="button" disabled={inlineAuthStatus === "loading"} onClick={handleInlineAuth} className="w-full rounded-2xl bg-gradient-to-r from-rose-400 to-violet-500 px-5 py-4 font-black text-white shadow-lg shadow-violet-500/20 disabled:cursor-wait disabled:opacity-60">{inlineAuthStatus === "loading" ? "Please wait..." : authMode === "signin" ? "Sign in" : "Create account"}</button>{inlineAuthMessage && <p role="status" className={`mt-3 rounded-xl border p-3 text-sm ${inlineAuthStatus === "error" ? "border-rose-300/20 bg-rose-400/10 text-rose-200" : "border-cyan-300/20 bg-cyan-400/10 text-cyan-100"}`}>{inlineAuthMessage}</p>}{inlineAuthStatus === "confirmation" && <button type="button" disabled={coolingDown} onClick={resendInlineConfirmation} className="mt-3 w-full rounded-xl border border-cyan-300/25 bg-cyan-400/10 px-4 py-3 text-sm font-black text-cyan-100 hover:bg-cyan-400/15 disabled:cursor-wait disabled:opacity-60">{coolingDown ? `Resend again in ${secondsRemaining}s` : "Resend confirmation email"}</button>}</>)}
+/><PasswordInput value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password" autoComplete={authMode === "signup" ? "new-password" : "current-password"} className="mb-3" inputClassName="w-full rounded-2xl border border-white/15 bg-slate-950 px-4 py-4 pr-12 text-white outline-none placeholder:text-white/30 focus:border-rose-300" />{authMode === "signup" && <PasswordInput value={inlineConfirmPassword} onChange={(e) => setInlineConfirmPassword(e.target.value)} placeholder="Confirm password" autoComplete={authMode === "signup" ? "new-password" : "current-password"} className="mb-4" inputClassName="w-full rounded-2xl border border-white/15 bg-slate-950 px-4 py-4 pr-12 text-white outline-none placeholder:text-white/30 focus:border-rose-300" />}<TurnstileVerification key={`${authMode}-${captchaVersion}`} onToken={setCaptchaToken} /><button type="button" disabled={inlineAuthStatus === "loading" || !captchaToken} onClick={handleInlineAuth} className="w-full rounded-2xl bg-gradient-to-r from-rose-400 to-violet-500 px-5 py-4 font-black text-white shadow-lg shadow-violet-500/20 disabled:cursor-wait disabled:opacity-60">{inlineAuthStatus === "loading" ? "Please wait..." : authMode === "signin" ? "Sign in" : "Create account"}</button>{inlineAuthMessage && <p role="status" className={`mt-3 rounded-xl border p-3 text-sm ${inlineAuthStatus === "error" ? "border-rose-300/20 bg-rose-400/10 text-rose-200" : "border-cyan-300/20 bg-cyan-400/10 text-cyan-100"}`}>{inlineAuthMessage}</p>}{inlineAuthStatus === "confirmation" && <button type="button" disabled={coolingDown} onClick={resendInlineConfirmation} className="mt-3 w-full rounded-xl border border-cyan-300/25 bg-cyan-400/10 px-4 py-3 text-sm font-black text-cyan-100 hover:bg-cyan-400/15 disabled:cursor-wait disabled:opacity-60">{coolingDown ? `Resend again in ${secondsRemaining}s` : "Resend confirmation email"}</button>}</>)}
               </div>
             </div>
           </div>

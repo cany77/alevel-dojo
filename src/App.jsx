@@ -459,7 +459,8 @@ useEffect(() => {
 }, [user]);
 
 
-  async function signUp(name = "") {
+  async function signUp(name = "", captchaToken) {
+    if (!captchaToken) return { ok: false, error: "Complete human verification first." };
     const emailRedirectTo = `${window.location.origin}/auth/callback`;
     logAuthDiagnostic("signup requested", {
       origin: window.location.origin,
@@ -471,6 +472,7 @@ useEffect(() => {
       email,
       password,
       options: {
+        captchaToken,
         data: {
           full_name: name,
           display_name: name,
@@ -489,7 +491,7 @@ useEffect(() => {
     });
 
     if (error) {
-      return { ok: false, error: "We could not create your account. Please try again." };
+      return { ok: false, error: error.code === "captcha_failed" ? "Human verification failed. Please verify again and retry." : "We could not create your account. Please try again." };
     }
 
     if (data.session?.user) {
@@ -531,15 +533,17 @@ useEffect(() => {
     }
   }
 
-async function signIn() {
+async function signIn(captchaToken) {
+  if (!captchaToken) return { ok: false, error: "Complete human verification first." };
   const { data, error } = await supabase.auth.signInWithPassword({
     email,
     password,
+    options: { captchaToken },
   });
 
   if (error) {
     logAuthDiagnostic("sign in failed", { errorMessage: error.message });
-    return { ok: false, error: "Email or password is incorrect, or the account has not been confirmed." };
+    return { ok: false, error: error.code === "captcha_failed" ? "Human verification failed. Please verify again and retry." : "Email or password is incorrect, or the account has not been confirmed." };
   }
 
   const signedInUser = data.user;

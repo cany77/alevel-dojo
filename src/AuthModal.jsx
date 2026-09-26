@@ -1,12 +1,16 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { MailCheck } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import { logAuthDiagnostic } from "./authDiagnostics";
 import useResendCooldown from "./useResendCooldown";
 import PasswordInput from "./PasswordInput";
+import TurnstileVerification from "./TurnstileVerification";
 
 export default function AuthModal({ showAuthModal, setShowAuthModal, email, setEmail, password, setPassword, signIn, signUp }) {
   const [mode, setMode] = useState("signin");
+  const [captchaToken, setCaptchaToken] = useState("");
+  const [captchaVersion, setCaptchaVersion] = useState(0);
+  const submitting = useRef(false);
   const [name, setName] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [confirmationEmail, setConfirmationEmail] = useState("");
@@ -36,6 +40,9 @@ export default function AuthModal({ showAuthModal, setShowAuthModal, email, setE
   const isConfirmation = mode === "confirmation";
 
   function changeMode(nextMode) {
+    if (submitting.current) return;
+    setCaptchaToken("");
+    setCaptchaVersion((version) => version + 1);
     setMode(nextMode);
     setConfirmPassword("");
     setAuthStatus("idle");
@@ -44,6 +51,9 @@ export default function AuthModal({ showAuthModal, setShowAuthModal, email, setE
 
   async function handleSubmit(event) {
     event.preventDefault();
+    if (submitting.current || !captchaToken) return;
+    submitting.current = true;
+    try {
 
     if (isForgotPassword) {
       if (!email.trim()) return setAuthMessage("Enter your email address.");
@@ -51,13 +61,14 @@ export default function AuthModal({ showAuthModal, setShowAuthModal, email, setE
       setAuthMessage("");
       const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
         redirectTo: `${window.location.origin}/reset-password`,
+        captchaToken,
       });
       setAuthStatus(error ? "error" : "success");
       setAuthMessage(error ? error.message : "Check your email for a secure reset link.");
       return;
     }
 
-    if (password !== confirmPassword) {
+    if (isSignUp && password !== confirmPassword) {
       setAuthStatus("error");
       setAuthMessage("Passwords do not match.");
       return;
@@ -66,7 +77,7 @@ export default function AuthModal({ showAuthModal, setShowAuthModal, email, setE
     if (isSignUp) {
       setAuthStatus("loading");
       setAuthMessage("");
-      const result = await signUp(name);
+      const result = await signUp(name, captchaToken);
       if (!result?.ok) {
         setAuthStatus("error");
         setAuthMessage(result?.error || "Could not create your account.");
@@ -83,10 +94,19 @@ export default function AuthModal({ showAuthModal, setShowAuthModal, email, setE
 
     setAuthStatus("loading");
     setAuthMessage("");
-    const result = await signIn();
+    const result = await signIn(captchaToken);
     if (!result?.ok) {
       setAuthStatus("error");
       setAuthMessage(result?.error || "Could not sign in.");
+    }
+    } catch {
+      setAuthStatus("error");
+      setAuthMessage("Could not connect. Please try again.");
+    } finally {
+      submitting.current = false;
+      setAuthStatus(status => status === "loading" ? "idle" : status);
+      setCaptchaToken("");
+      setCaptchaVersion((version) => version + 1);
     }
   }
 
@@ -117,7 +137,7 @@ export default function AuthModal({ showAuthModal, setShowAuthModal, email, setE
 
   return (
     <div onClick={() => setShowAuthModal(false)} className={`fixed inset-0 z-[999999] flex items-center justify-center bg-black/70 px-4 transition-all duration-300 ease-out ${visible ? "opacity-100 backdrop-blur-sm" : "opacity-0 backdrop-blur-none"}`}>
-      <div onClick={(event) => event.stopPropagation()} className={`w-full max-w-[430px] rounded-[24px] border border-white/20 bg-[#17132d]/95 p-7 text-white shadow-2xl transition-all duration-300 ease-out ${visible ? "translate-y-0 scale-100 opacity-100" : "translate-y-8 scale-95 opacity-0"}`}>
+      <div onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="A-Level Dojo account" className={`max-h-[calc(100dvh-32px)] overflow-y-auto w-full max-w-[430px] rounded-[24px] border border-white/20 bg-[#17132d]/95 p-7 text-white shadow-2xl transition-all duration-300 ease-out ${visible ? "translate-y-0 scale-100 opacity-100" : "translate-y-8 scale-95 opacity-0"}`}>
         <div className="mb-6 flex items-start justify-between">
           <div className="flex items-center gap-3">
             <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-rose-400 to-violet-500 font-black text-white">A</div>
@@ -149,9 +169,10 @@ export default function AuthModal({ showAuthModal, setShowAuthModal, email, setE
               {isSignUp && <input required value={name} onChange={(event) => setName(event.target.value)} placeholder="Your name" className="w-full rounded-xl border border-white/25 bg-transparent px-4 py-4 text-white outline-none placeholder:text-white/35 focus:border-cyan-300" />}
               <input required type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="Email address" className="w-full rounded-xl border border-white/25 bg-transparent px-4 py-4 text-white outline-none placeholder:text-white/35 focus:border-cyan-300" />
               {!isForgotPassword && <PasswordInput value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Password" autoComplete={isSignUp ? "new-password" : "current-password"} />}
-              {!isForgotPassword && <PasswordInput value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} placeholder="Confirm password" autoComplete={isSignUp ? "new-password" : "current-password"} />}
+              {isSignUp && <PasswordInput value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} placeholder="Confirm password" autoComplete="new-password" />}
+              {showAuthModal && <TurnstileVerification key={`${mode}-${captchaVersion}`} onToken={setCaptchaToken} />}
               {authMessage && <p role="status" className={`text-sm ${authStatus === "error" ? "text-rose-300" : "text-cyan-200"}`}>{authMessage}</p>}
-              <button type="submit" disabled={authStatus === "loading"} className="w-full rounded-xl bg-gradient-to-r from-rose-400 to-violet-500 py-4 font-black text-white transition hover:brightness-110 disabled:cursor-wait disabled:opacity-60">{authStatus === "loading" ? "Please wait..." : isForgotPassword ? "Send reset link" : isSignUp ? "Create account" : "Sign in"}</button>
+              <button type="submit" disabled={authStatus === "loading" || !captchaToken} className="w-full rounded-xl bg-gradient-to-r from-rose-400 to-violet-500 py-4 font-black text-white transition hover:brightness-110 disabled:cursor-wait disabled:opacity-60">{authStatus === "loading" ? "Please wait..." : isForgotPassword ? "Send reset link" : isSignUp ? "Create account" : "Sign in"}</button>
             </form>
 
             {!isSignUp && !isForgotPassword && <button type="button" onClick={() => changeMode("forgot")} className="mt-4 w-full text-center text-sm font-bold text-cyan-200 hover:text-cyan-100">Forgot password?</button>}
