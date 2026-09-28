@@ -1,10 +1,23 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { Worker, Viewer } from "@react-pdf-viewer/core";
 import { defaultLayoutPlugin } from "@react-pdf-viewer/default-layout";
 import PdfEditorLayer from "./PdfEditorLayer";
+import FindDocument from "./pdf/FindDocument";
+import { Search as SearchIcon } from "lucide-react";
+import workerUrl from "pdfjs-dist/build/pdf.worker.min.js?url";
 
 import "@react-pdf-viewer/core/lib/styles/index.css";
 import "@react-pdf-viewer/default-layout/lib/styles/index.css";
+
+function initialDraftScale(adapter) {
+  const view = adapter.view();
+  if (view.zoom && (!view.zoomViewportWidth || Math.abs(view.zoomViewportWidth - window.innerWidth) < 120)) return view.zoom;
+  if (window.innerWidth > 640) return 1;
+  const page = adapter.page(1);
+  const pageWidth = page?.rotation % 180 ? page.height : page?.width;
+  return Math.min(1, (window.innerWidth - 72) / (pageWidth || 595));
+}
 
 class PdfEditorErrorBoundary extends React.Component {
   constructor(props) {
@@ -94,8 +107,41 @@ export default function PdfViewer({
   canExportPdf = true,
   onExportBlocked = () => {},
   onGoBack = null,
+  draftAdapter = null,
+  toolbarHost = null,
+  onControlsReady = null,
 }) {
-  const defaultLayoutPluginInstance = defaultLayoutPlugin();
+  const [findOpen, setFindOpen] = useState(false);
+  const defaultLayoutPluginInstance = defaultLayoutPlugin(draftAdapter ? {
+    toolbarPlugin: { searchPlugin: { enableShortcuts: false } },
+    sidebarTabs: tabs => [tabs[0]],
+    renderToolbar: Toolbar => <Toolbar>{slots => {
+      const navigation = <div className="local-pdf-navigation">
+      <button type="button" className="local-pdf-find-trigger" title="Find in document (Ctrl+F)" aria-label="Find in document" onClick={() => setFindOpen(value => !value)}><SearchIcon size={17}/></button>
+      <slots.GoToPreviousPage /><slots.CurrentPageInput />
+      <span>/ <slots.NumberOfPages /></span><slots.GoToNextPage />
+      <slots.ZoomOut /><slots.Zoom /><slots.ZoomIn />
+      <slots.SwitchSelectionMode />
+      <slots.Search>{search => <FindDocument search={search} open={findOpen} close={() => setFindOpen(false)} />}</slots.Search>
+      </div>;
+      return toolbarHost ? createPortal(navigation, toolbarHost) : navigation;
+    }}</Toolbar>,
+  } : undefined);
+  useEffect(() => {
+    if (!draftAdapter) return;
+    const navigation = defaultLayoutPluginInstance.toolbarPluginInstance.pageNavigationPluginInstance;
+    onControlsReady?.({ toggleThumbnails: () => defaultLayoutPluginInstance.toggleTab(0), jumpToPage: navigation.jumpToPage });
+    return () => onControlsReady?.(null);
+  }, [defaultLayoutPluginInstance, draftAdapter, onControlsReady]);
+  useEffect(() => {
+    if (!draftAdapter) return;
+    function onFind(event) {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "f") { event.preventDefault(); setFindOpen(true); }
+      if (event.key === "Escape") setFindOpen(false);
+    }
+    window.addEventListener("keydown", onFind);
+    return () => window.removeEventListener("keydown", onFind);
+  }, [draftAdapter]);
   const safeFileUrl = typeof fileUrl === "string" ? fileUrl.trim() : fileUrl;
 
   if (!safeFileUrl) {
@@ -111,12 +157,17 @@ export default function PdfViewer({
   }
 
   return (
-    <div className="question-editor-panel relative h-[72vh] overflow-hidden rounded-xl bg-white">
+    <div className={`question-editor-panel relative overflow-hidden ${draftAdapter ? "local-pdf-viewer" : "h-[72vh] rounded-xl bg-white"}`}>
       <PdfEditorErrorBoundary onGoBack={onGoBack}>
-        <Worker workerUrl="https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js">
+        <Worker workerUrl={draftAdapter ? workerUrl : "https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js"}>
           <Viewer
             fileUrl={safeFileUrl}
             plugins={[defaultLayoutPluginInstance]}
+            theme={draftAdapter ? "dark" : undefined}
+            initialPage={draftAdapter?.view().page || 0}
+            defaultScale={draftAdapter ? initialDraftScale(draftAdapter) : undefined}
+            onPageChange={draftAdapter ? event => draftAdapter.setView({ page: event.currentPage }) : undefined}
+            onZoom={draftAdapter ? event => draftAdapter.setView({ zoom: event.scale, zoomViewportWidth: window.innerWidth }) : undefined}
             renderLoader={(percentages) => <PdfLoader percentage={percentages} />}
             renderError={(error) => (
               <PdfEditorFallback
@@ -137,6 +188,7 @@ export default function PdfViewer({
             exportFileName={exportFileName}
             canExportPdf={canExportPdf}
             onExportBlocked={onExportBlocked}
+            draftAdapter={draftAdapter}
           />
         )}
       </PdfEditorErrorBoundary>

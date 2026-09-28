@@ -4,7 +4,7 @@ import { loadTurnstile, resolveTurnstileSiteKey } from "./lib/turnstile";
 const configuredKey = import.meta.env.VITE_CLOUDFLARE_TURNSTILE_SITE_KEY;
 const sitekey = resolveTurnstileSiteKey(configuredKey, import.meta.env.DEV);
 if (import.meta.env.DEV && !configuredKey?.trim()) {
-  console.info("[Turnstile] Using Cloudflare's official development test widget. Real authentication needs a matching real site key and Supabase secret, or a separate test Supabase project configured with Cloudflare's test secret. Never use the test secret on production Supabase.");
+  console.info("[Turnstile] Local Site Key missing. Add VITE_CLOUDFLARE_TURNSTILE_SITE_KEY to .env.local and restart Vite. The widget must allow localhost; Supabase needs the matching private Secret Key.");
 }
 
 export default function TurnstileVerification({ onToken }) {
@@ -91,7 +91,7 @@ export default function TurnstileVerification({ onToken }) {
 
   return <div className="min-w-0 space-y-2">
     <div ref={container} />
-    <p role="status" aria-live="polite" className="text-xs leading-5 text-white/60">{sitekey ? status : "Human verification is temporarily unavailable. Please try again shortly."}</p>
+    <p role="status" aria-live="polite" className="text-xs leading-5 text-white/60">{sitekey ? status : import.meta.env.DEV ? "Local verification setup: add the public Turnstile Site Key to .env.local, allow localhost on the widget, then restart Vite." : "Human verification is temporarily unavailable. Please try again shortly."}</p>
     {failed && <button type="button" onClick={retry} className="rounded-lg border border-cyan-300/25 bg-cyan-400/10 px-3 py-2 text-sm font-bold text-cyan-100 hover:bg-cyan-400/20 focus-visible:outline-2 focus-visible:outline-cyan-300">Retry verification</button>}
   </div>;
 }

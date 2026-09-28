@@ -37,9 +37,15 @@ Local validation: production build and four loader tests pass. The test browser 
 
 ## Local development
 
-With `import.meta.env.DEV`, a missing key uses Cloudflare's official visible test site key. This tests rendering and form enablement; it does not bypass Supabase. Production builds have no test fallback and reject known test site keys.
+The local app requires an explicit public Site Key in ignored `.env.local`:
 
-Cloudflare's real secrets reject dummy test tokens. To sign in against the existing production Supabase project locally, configure a real matching public site key in ignored `.env.local`, allow `localhost`/`127.0.0.1` on that widget, and restart Vite. Alternatively, use a separate development Supabase project with Cloudflare's documented matching test secret. **Never replace the production Supabase secret with a test secret.** The current client points at the existing project, so the automatic development widget alone does not prove end-to-end authentication works.
+```text
+VITE_CLOUDFLARE_TURNSTILE_SITE_KEY=YOUR_PUBLIC_SITE_KEY
+```
+
+No test-key fallback is used when this key is missing. A test widget can report success in the browser while the connected Supabase project rejects its token if Supabase uses a real Secret Key. Production rejects known test keys. The Site Key is public; keep the private Secret Key only in Supabase CAPTCHA settings.
+
+To sign in against the existing Supabase project locally, configure its matching real public Site Key in ignored `.env.local`, allow `localhost` (and `127.0.0.1` if used) in that Cloudflare widget, and **restart Vite** after changing `.env.local`. A separate development Supabase project can use Cloudflare's matching test secret for UI tests, but never change the real project's Secret Key to a test secret.
 
 ## Loading and retry
 

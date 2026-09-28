@@ -22,6 +22,7 @@ import {
   recordUsageEvent,
 } from "./lib/freePlanLimits";
 import React, { useEffect, useMemo, useRef, useState } from "react";
+const StandalonePdfEditor = React.lazy(() => import("./StandalonePdfEditor"));
 import {
   BarChart3,
   Bell,
@@ -1417,6 +1418,7 @@ function DashboardShellSidebar({
     [Home, "Home", "dashboard"],
     [FileText, "Past papers", "pastpapers"],
     [Layers3, "Topic tests", "topictests"],
+    [FileText, "PDF Editor", "pdfeditor"],
     [CalendarDays, "Exam calendar", "calendar"],
     [RotateCcw, "Mistakes tracker", "mistakes"],
     [LineChartIcon, "Grade boundaries", "boundaries"],
@@ -7027,7 +7029,8 @@ export default function Dashboard({
     readBooleanStorage("aleveldojo_sidebar_pinned_open", true)
   );
   const [sidebarPreviewOpen, setSidebarPreviewOpen] = useState(false);
-  const [activeView, setActiveView] = useState(persistedDashboardState.activeView || "dashboard");
+  const [standalonePdfOpen, setStandalonePdfOpen] = useState(false);
+  const [activeView, setActiveView] = useState(new URLSearchParams(window.location.search).get("view") === "pdfeditor" ? "pdfeditor" : persistedDashboardState.activeView || "dashboard");
   const [activeSubjectId, setActiveSubjectId] = useState(persistedDashboardState.activeSubjectId || null);
   const [subjectSection, setSubjectSection] = useState(persistedDashboardState.subjectSection || "overview");
   const [profileOpen, setProfileOpen] = useState(false);
@@ -7226,6 +7229,7 @@ export default function Dashboard({
     { label: "Home", detail: "Overview", action: () => selectView("dashboard"), keywords: "dashboard home overview" },
     { label: "Past papers", detail: "Browse papers", action: () => selectView("pastpapers"), keywords: "paper exam pdf" },
     { label: "Topic tests", detail: "Topic practice", action: () => selectView("topictests"), keywords: "topic test practice" },
+    { label: "PDF Editor", detail: "Your local PDFs", action: () => selectView("pdfeditor"), keywords: "upload annotate export pdf" },
     { label: "Exam calendar", detail: "Upcoming exams", action: () => selectView("calendar"), keywords: "calendar timetable dates" },
     { label: "Mistakes tracker", detail: "Review mistakes", action: () => selectView("mistakes"), keywords: "mistakes review wrong fixed" },
     { label: "Grade boundaries", detail: "Boundary trends", action: () => selectView("boundaries"), keywords: "grades marks boundary graph" },
@@ -7324,6 +7328,11 @@ export default function Dashboard({
   );
   const sidebarVisible = sidebarPinnedOpen || sidebarPreviewOpen;
   const sidebarAffectsLayout = sidebarPinnedOpen;
+  const immersivePdfEditor = activeView === "pdfeditor" && standalonePdfOpen;
+
+  useEffect(() => {
+    if (immersivePdfEditor) setSidebarPreviewOpen(false);
+  }, [immersivePdfEditor]);
   const allCalendarEvents = [
     ...examDates.map(toOfficialCalendarEvent),
     ...calendarEvents.map(toUserCalendarEvent),
@@ -7705,6 +7714,10 @@ export default function Dashboard({
   }
 
   function selectView(view) {
+    const url = new URL(window.location.href);
+    if (view === "pdfeditor") url.searchParams.set("view", "pdfeditor");
+    else url.searchParams.delete("view");
+    window.history.replaceState({}, "", url);
     setActiveSubjectId(null);
     setActiveView(view);
     setOpenedResource({ openedPaper: null, openedTopicTest: null });
@@ -7817,7 +7830,7 @@ export default function Dashboard({
       />
 
       <div className="relative z-10 min-h-screen">
-        {!sidebarPinnedOpen && (
+        {!immersivePdfEditor && !sidebarPinnedOpen && (
           <div
             className="fixed left-0 top-0 z-[90] hidden h-screen w-3 lg:block"
             onMouseEnter={() => setSidebarPreviewOpen(true)}
@@ -7825,7 +7838,7 @@ export default function Dashboard({
           />
         )}
 
-        <DashboardShellSidebar
+        {!immersivePdfEditor && <DashboardShellSidebar
           open={sidebarVisible}
           onOpen={() => {
             if (!sidebarPinnedOpen) setSidebarPreviewOpen(true);
@@ -7846,10 +7859,10 @@ export default function Dashboard({
           profile={dashboardProfile}
           xp={currentXp}
           paidAccess={planAccess.isPaid}
-        />
+        />}
 
-        <main className={`${sidebarAffectsLayout ? "lg:ml-[230px]" : "lg:ml-0"} px-5 pb-5 pt-20 transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] md:px-8 lg:px-10`}>
-          <div className="mb-4 flex items-center justify-between rounded-3xl border border-white/10 bg-white/[0.035] px-4 py-3 lg:hidden">
+        <main className={immersivePdfEditor ? "p-0" : `${sidebarAffectsLayout ? "lg:ml-[230px]" : "lg:ml-0"} px-5 pb-5 pt-20 transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] md:px-8 lg:px-10`}>
+          {!immersivePdfEditor && <div className="mb-4 flex items-center justify-between rounded-3xl border border-white/10 bg-white/[0.035] px-4 py-3 lg:hidden">
             <Logo onGoHome={onGoHome} />
             <select
               value={activeView}
@@ -7859,15 +7872,16 @@ export default function Dashboard({
               <option value="dashboard">Home</option>
               <option value="pastpapers">Past papers</option>
               <option value="topictests">Topic tests</option>
+              <option value="pdfeditor">PDF Editor</option>
               <option value="calendar">Exam calendar</option>
               <option value="mistakes">Mistakes tracker</option>
               <option value="boundaries">Grade boundaries</option>
               <option value="ai">AI tutor</option>
               <option value="settings">Settings</option>
             </select>
-          </div>
+          </div>}
 
-          <header className={`fixed right-0 top-0 z-[70] flex items-center justify-between gap-3 overflow-visible border-b border-white/[0.08] bg-[#0b1020]/92 px-5 py-2 backdrop-blur-xl transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] md:px-8 lg:px-10 ${
+          {!immersivePdfEditor && <header className={`fixed right-0 top-0 z-[70] flex items-center justify-between gap-3 overflow-visible border-b border-white/[0.08] bg-[#0b1020]/92 px-5 py-2 backdrop-blur-xl transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] md:px-8 lg:px-10 ${
             sidebarAffectsLayout ? "left-0 lg:left-[230px]" : "left-0"
           }`}>
             <div className="flex min-w-0 flex-1 items-center gap-3">
@@ -8042,7 +8056,7 @@ export default function Dashboard({
                 />
               </div>
             </div>
-          </header>
+          </header>}
 
           {activeSubject ? (
             <SubjectPagePreview
@@ -8097,6 +8111,22 @@ export default function Dashboard({
               onOpenSubject={openSubject}
               onOpenPaperEdit={openPaperFromLanding}
             />
+          ) : activeView === "pdfeditor" ? (
+            <React.Suspense fallback={<p className="p-6 text-white/60">Loading PDF Editor...</p>}>
+              <StandalonePdfEditor user={user} canExport={planAccess.isPaid} onDocumentOpenChange={setStandalonePdfOpen}
+                onExportBlocked={() => onOpenPaywall({ title: "PDF export is included in Dojo Plus.", message: "Upgrade for unlimited PDF editing and export." })}
+                authorizeOpen={async document => {
+                  if (!planAccess.canOpenPdfEdit) {
+                    onOpenPaywall({ title: "PDF Edit limit reached", message: "Free students get 2 PDF edits each week. Upgrade for unlimited PDF editing and export.", usageText: `${planAccess.usage.pdfEdits}/${FREE_LIMITS.pdfEditsPerWeek} PDF edits used this week.` });
+                    return false;
+                  }
+                  if (!planAccess.isPaid) {
+                    const recorded = await recordDashboardUsage(USAGE_EVENT_TYPES.pdfEditOpen, { id: `standalone:${document.id}`, label: document.name });
+                    if (!recorded) throw new Error("Could not verify PDF Edit access. Check your connection and try again.");
+                  }
+                  return true;
+                }} />
+            </React.Suspense>
           ) : activeView === "topictests" ? (
             <TopicTestsLandingPage
               subjects={activeSubjects}

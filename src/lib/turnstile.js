@@ -3,9 +3,9 @@ let pendingScript;
 
 export function resolveTurnstileSiteKey(configured, development) {
   const key = typeof configured === "string" ? configured.trim() : "";
-  // Cloudflare's documented visible test widget. Never accept test keys in production.
+  // This app connects to the existing Supabase project; its secret must match this public key.
   if (!development && /^[123]x0{10,}/.test(key)) return "";
-  return key || (development ? "1x00000000000000000000AA" : "");
+  return key;
 }
 
 export function loadTurnstile() {

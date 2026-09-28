@@ -22,6 +22,8 @@ import {
 } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import { exportAnnotatedPdf } from "./pdfExport";
+import { inversePoint } from "./pdf/documentModel";
+import { annotationBounds, moveOrResize } from "./pdf/annotationArtwork";
 
 const toolOptions = [
   { id: "select", label: "Select", icon: MousePointer2 },
@@ -124,6 +126,12 @@ function emptyEditorPayload() {
 
 function getPointer(event, element) {
   const rect = element.getBoundingClientRect();
+  if (element.dataset.localPdfRotation !== undefined) {
+    const rotation = Number(element.dataset.localPdfRotation);
+    const point = inversePoint(clamp((event.clientX - rect.left) / rect.width, 0, 1), clamp((event.clientY - rect.top) / rect.height, 0, 1), rotation);
+    const swapped = rotation % 180 !== 0;
+    return { x: point.x * (swapped ? rect.height : rect.width), y: point.y * (swapped ? rect.width : rect.height) };
+  }
   return {
     x: clamp(event.clientX - rect.left, 0, rect.width),
     y: clamp(event.clientY - rect.top, 0, rect.height),
@@ -192,6 +200,7 @@ export default function PdfEditorLayer({
   exportFileName = "A-Level-Dojo-Paper-Export.pdf",
   canExportPdf = true,
   onExportBlocked = () => {},
+  draftAdapter = null,
 }) {
   const markerRef = useRef(null);
   const saveTimerRef = useRef(null);
@@ -223,6 +232,9 @@ export default function PdfEditorLayer({
   const [eraserCursor, setEraserCursor] = useState(null);
   const [isExporting, setIsExporting] = useState(false);
   const [exportError, setExportError] = useState("");
+  const [extended, setExtended] = useState({ opacity: 1, dotted: false, touch: false, panel: "auto" });
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [selectionBox, setSelectionBox] = useState(null);
 
   const eraserRadius =
     eraserSizes.find((sizeOption) => sizeOption.id === eraserSize)?.radius || 22;
@@ -279,6 +291,10 @@ export default function PdfEditorLayer({
 
   const writeEditorWorkspaceDraft = useCallback(
     (nextAnnotations = annotationsRef.current) => {
+      if (draftAdapter) {
+        draftAdapter.workspace({ tool: activeToolRef.current, strokeColor, strokeWidth, highlightColor, shapeType, textColor, fontSize, eraserSize, extended });
+        return;
+      }
       const annotationPayload = savePayload(nextAnnotations);
       try {
         localStorage.setItem(`pdf-editor-${annotationKey}-${pdfType}`, JSON.stringify(annotationPayload));
@@ -325,11 +341,18 @@ export default function PdfEditorLayer({
       textColor,
       tool,
       workspaceKey,
+      draftAdapter,
+      extended,
     ]
   );
 
   const writeAnnotations = useCallback(
     async (nextAnnotations = annotations) => {
+      if (draftAdapter) {
+        try { await draftAdapter.save(nextAnnotations); setSaveStatus("Saved locally"); }
+        catch { setSaveStatus("Save failed"); }
+        return;
+      }
       const payload = savePayload(nextAnnotations);
 
       try {
@@ -369,12 +392,17 @@ export default function PdfEditorLayer({
         );
       }
     },
-    [annotationKey, annotations, paperId, pdfType, savePayload, user?.id, writeEditorWorkspaceDraft]
+    [annotationKey, annotations, paperId, pdfType, savePayload, user?.id, writeEditorWorkspaceDraft, draftAdapter]
   );
 
   const resetPaperAnnotations = useCallback(async () => {
     const confirmed = window.confirm("Clear all annotations on this paper?");
     if (!confirmed) return;
+
+    if (draftAdapter) {
+      commitAnnotations([]);
+      return;
+    }
 
     window.clearTimeout(saveTimerRef.current);
     setAnnotations([]);
@@ -416,13 +444,14 @@ export default function PdfEditorLayer({
 
   const scheduleSave = useCallback(
     (nextAnnotations) => {
+      draftAdapter?.change(nextAnnotations);
       setSaveStatus("Unsaved changes");
       window.clearTimeout(saveTimerRef.current);
       saveTimerRef.current = window.setTimeout(() => {
         writeAnnotations(nextAnnotations);
       }, 800);
     },
-    [writeAnnotations]
+    [writeAnnotations, draftAdapter]
   );
 
   const pushHistory = useCallback((nextAnnotations) => {
@@ -462,9 +491,10 @@ export default function PdfEditorLayer({
       activeToolRef.current = nextTool;
       setTool(nextTool);
       setSelectedId(null);
-      setActiveFlyout(workingToolFlyouts.includes(nextTool) ? nextTool : null);
+      setSelectedIds([]);
+      setActiveFlyout(current => draftAdapter ? (current === nextTool ? null : extended.panel === "closed" ? null : nextTool) : workingToolFlyouts.includes(nextTool) ? nextTool : null);
     },
-    [stopCurrentSession]
+    [stopCurrentSession, draftAdapter, extended.panel, tool]
   );
 
   const deleteAnnotation = useCallback(
@@ -482,6 +512,14 @@ export default function PdfEditorLayer({
       if (!id || !element || !pageElement) return;
       const wrapperRect = pageElement.getBoundingClientRect();
       const elementRect = element.getBoundingClientRect();
+      if (draftAdapter) {
+        const rotated = Number(pageElement.dataset.localPdfRotation) % 180 !== 0;
+        commitAnnotations(current => current.map(item => item.id === id ? { ...item,
+          width: element.offsetWidth / (rotated ? wrapperRect.height : wrapperRect.width),
+          height: element.offsetHeight / (rotated ? wrapperRect.width : wrapperRect.height),
+        } : item));
+        return;
+      }
 
       commitAnnotations((current) =>
         current.map((item) =>
@@ -498,7 +536,7 @@ export default function PdfEditorLayer({
         )
       );
     },
-    [commitAnnotations]
+    [commitAnnotations, draftAdapter]
   );
 
   const annotationTouchesEraser = useCallback((annotation, point, pageSize) => {
@@ -557,6 +595,7 @@ export default function PdfEditorLayer({
       const touchedIds = annotationsRef.current
         .filter((annotation) => Number(annotation.pageNumber || annotation.page || 1) === pageNumber)
         .filter((annotation) => !erasedDuringStrokeRef.current.has(annotation.id))
+        .filter(annotation => !draftAdapter || extended.eraseTargets?.[annotation.type] !== false)
         .filter((annotation) => annotationTouchesEraser(annotation, point, pageSize))
         .map((annotation) => annotation.id);
 
@@ -571,12 +610,18 @@ export default function PdfEditorLayer({
         return next;
       });
     },
-    [annotationTouchesEraser]
+    [annotationTouchesEraser, draftAdapter, extended.eraseTargets]
   );
 
   useEffect(() => {
     function deleteSelectedWithKeyboard(event) {
+      if (draftAdapter && event.key === "Escape") { setActiveFlyout(null); return; }
+      if (draftAdapter && (event.target.closest("input, textarea, select, [contenteditable=true]"))) return;
+      if (draftAdapter && (event.ctrlKey || event.metaKey) && ["z", "y"].includes(event.key.toLowerCase())) {
+        event.preventDefault(); if (event.key.toLowerCase() === "y" || event.shiftKey) redo(); else undo(); return;
+      }
       if (event.key !== "Delete" && event.key !== "Backspace") return;
+      if (draftAdapter && selectedIds.length) { event.preventDefault(); commitAnnotations(current => current.filter(a => !selectedIds.includes(a.id))); setSelectedIds([]); return; }
       if (!selectedId) return;
 
       const activeElement = document.activeElement;
@@ -594,7 +639,16 @@ export default function PdfEditorLayer({
     return () => {
       window.removeEventListener("keydown", deleteSelectedWithKeyboard);
     };
-  }, [deleteAnnotation, selectedId]);
+  }, [deleteAnnotation, selectedId, selectedIds, draftAdapter]);
+
+  useEffect(() => {
+    if (!draftAdapter) return;
+    function closeToolOptions(event) {
+      if (!event.target.closest(".local-pdf-toolrail, .local-pdf-options")) setActiveFlyout(null);
+    }
+    document.addEventListener("pointerdown", closeToolOptions);
+    return () => document.removeEventListener("pointerdown", closeToolOptions);
+  }, [draftAdapter]);
 
   useEffect(() => {
     const panel = markerRef.current?.closest(".question-editor-panel");
@@ -638,6 +692,23 @@ export default function PdfEditorLayer({
     let isMounted = true;
 
     async function loadAnnotations() {
+      if (draftAdapter) {
+        const loaded = draftAdapter.load();
+        pendingScrollRestoreRef.current = draftAdapter.view();
+        setAnnotations(loaded);
+        annotationsRef.current = loaded;
+        historyRef.current = [JSON.stringify(loaded)];
+        historyIndexRef.current = 0;
+        const ui = draftAdapter.preferences();
+        if (ui) {
+          setTool(ui.tool || "select"); activeToolRef.current = ui.tool || "select";
+          setStrokeColor(ui.strokeColor || "#22d3ee"); setStrokeWidth(ui.strokeWidth || 3);
+          setTextColor(ui.textColor || "#0f172a"); setFontSize(ui.fontSize || 18);
+          setShapeType(ui.shapeType || "rect"); setEraserSize(ui.eraserSize || "medium");
+          setExtended(ui.extended || { opacity: 1, dotted: false, touch: false, panel: "auto" });
+        }
+        return;
+      }
       let savedPayload = null;
       let workspaceDraft = null;
 
@@ -719,7 +790,7 @@ export default function PdfEditorLayer({
       isMounted = false;
       window.clearTimeout(saveTimerRef.current);
     };
-  }, [annotationKey, paperId, pdfType, user?.id, workspaceKey]);
+  }, [annotationKey, paperId, pdfType, user?.id, workspaceKey, draftAdapter]);
 
   useEffect(() => {
     function handleGlobalPointerMove(event) {
@@ -764,6 +835,7 @@ export default function PdfEditorLayer({
   useEffect(() => {
     const pending = pendingScrollRestoreRef.current;
     if (!pending) return;
+    if (draftAdapter && !pageElements.length) return;
     const scrollContainer = findScrollContainer();
     if (!scrollContainer) return;
 
@@ -774,7 +846,20 @@ export default function PdfEditorLayer({
     });
 
     return () => window.cancelAnimationFrame(frame);
-  }, [annotationKey, findScrollContainer, pageElements.length]);
+  }, [annotationKey, draftAdapter, findScrollContainer, pageElements.length]);
+
+  useEffect(() => {
+    if (!draftAdapter || !pageElements.length) return;
+    const scrollContainer = findScrollContainer();
+    if (!scrollContainer) return;
+    let timer;
+    const rememberScroll = () => {
+      clearTimeout(timer);
+      timer = window.setTimeout(() => draftAdapter.setView({ scrollTop: scrollContainer.scrollTop, scrollLeft: scrollContainer.scrollLeft }), 300);
+    };
+    scrollContainer.addEventListener("scroll", rememberScroll, { passive: true });
+    return () => { scrollContainer.removeEventListener("scroll", rememberScroll); clearTimeout(timer); };
+  }, [draftAdapter, findScrollContainer, pageElements.length]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -809,6 +894,31 @@ export default function PdfEditorLayer({
     if (!pageElement) return;
     const point = normalizePoint(getPointer(event, pageElement), pageSize);
 
+    if (draftAdapter) {
+      if (event.button !== 0 && event.pointerType === "mouse") return;
+      if (event.pointerType === "touch" && !extended.touch) return;
+      if (tool === "native") return;
+      if (tool === "hand") {
+        const scroller = findScrollContainer();
+        dragRef.current = { pan: true, scroller, clientX: event.clientX, clientY: event.clientY, scrollTop: scroller?.scrollTop || 0, scrollLeft: scroller?.scrollLeft || 0, pageElement, pageSize };
+        event.currentTarget.setPointerCapture?.(event.pointerId); return;
+      }
+      if (tool === "select" || tool === "highlight-select") {
+        setSelectedId(null); setSelectedIds([]);
+        dragRef.current = { box: true, start: point, pageElement, pageSize, pageNumber };
+        setSelectionBox({ pageNumber, ...point, width: 0, height: 0 });
+        event.currentTarget.setPointerCapture?.(event.pointerId); return;
+      }
+      if (["math", "image"].includes(tool)) {
+        if (!extended.asset?.image) return;
+        const meta = draftAdapter.page(pageNumber);
+        const width = Math.min(.5, (extended.asset.width || 160) / meta.width);
+        commitAnnotations(current => [...current, { ...extended.asset, id: uid(tool), type: tool, pageNumber, x: point.x, y: point.y, width, height: width * meta.width / meta.height / extended.asset.aspect, opacity: extended.opacity }]);
+        if (extended.panel !== "open") setActiveFlyout(null);
+        return;
+      }
+    }
+
     if (tool === "select") return;
 
     if (tool === "eraser") {
@@ -823,7 +933,7 @@ export default function PdfEditorLayer({
 
     event.preventDefault();
     event.currentTarget.setPointerCapture?.(event.pointerId);
-    setActiveFlyout(null);
+    if (!draftAdapter || extended.panel !== "open") setActiveFlyout(null);
 
     if (tool === "pen" || tool === "highlight") {
       const newStroke = {
@@ -835,7 +945,8 @@ export default function PdfEditorLayer({
         points: [point],
         color: tool === "pen" ? strokeColor : highlightColor,
         strokeWidth: tool === "pen" ? strokeWidth : Math.max(10, strokeWidth * 3),
-        opacity: tool === "pen" ? 1 : 0.42,
+        opacity: draftAdapter ? (tool === "highlight" ? .35 : extended.opacity) : tool === "pen" ? 1 : 0.42,
+        ...(draftAdapter ? { dotted: extended.dotted } : {}),
         createdAt: new Date().toISOString(),
       };
       currentDraftRef.current = newStroke;
@@ -843,10 +954,10 @@ export default function PdfEditorLayer({
       return;
     }
 
-    if (tool === "shape") {
+    if (tool === "shape" || (draftAdapter && ["ruler", "protractor", "compass"].includes(tool))) {
       const newShape = {
         id: uid(shapeType),
-        type: shapeType,
+        type: tool === "shape" ? shapeType : tool,
         pageNumber,
         pageElement,
         pageSize,
@@ -856,7 +967,8 @@ export default function PdfEditorLayer({
         height: 0,
         color: strokeColor,
         strokeWidth,
-        opacity: 1,
+        opacity: draftAdapter ? extended.opacity : 1,
+        ...(draftAdapter ? { dotted: extended.dotted, sides: extended.sides, mmPerPoint: extended.mmPerPoint, decimals: extended.decimals } : {}),
         createdAt: new Date().toISOString(),
       };
       currentDraftRef.current = newShape;
@@ -876,6 +988,7 @@ export default function PdfEditorLayer({
         text: "",
         color: textColor,
         fontSize,
+        ...(draftAdapter ? { width: .3, height: .12, ...extended, asset: undefined, color: textColor, fontSize } : {}),
         createdAt: new Date().toISOString(),
       };
       commitAnnotations((current) => [...current, textAnnotation]);
@@ -894,12 +1007,36 @@ export default function PdfEditorLayer({
     const point = normalizePoint(getPointer(event, targetElement), targetSize);
     const currentDraft = currentDraftRef.current;
 
+    if (draftAdapter && dragRef.current?.pan) {
+      const drag = dragRef.current;
+      if (drag.scroller) { drag.scroller.scrollTop = drag.scrollTop - (event.clientY - drag.clientY); drag.scroller.scrollLeft = drag.scrollLeft - (event.clientX - drag.clientX); } return;
+    }
+    if (draftAdapter && dragRef.current?.box) {
+      const drag = dragRef.current;
+      const box = { pageNumber: drag.pageNumber, x: Math.min(point.x,drag.start.x), y: Math.min(point.y,drag.start.y), width: Math.abs(point.x-drag.start.x), height: Math.abs(point.y-drag.start.y) };
+      setSelectionBox(box);
+      setSelectedIds(annotationsRef.current.filter(a => a.pageNumber === drag.pageNumber && (tool !== "highlight-select" || a.type === "highlight")).filter(a => { const b=annotationBounds(a); return b.x >= box.x && b.y >= box.y && b.x+b.width <= box.x+box.width && b.y+b.height <= box.y+box.height; }).map(a=>a.id)); return;
+    }
+    if (draftAdapter && dragRef.current?.originals) {
+      const drag = dragRef.current;
+      const dx = point.x - drag.start.x, dy = point.y - drag.start.y;
+      const next = annotationsRef.current.map(a => {
+        const original = drag.originals.find(o => o.id === a.id); if (!original) return a;
+        const bounds = annotationBounds(original);
+        const target = drag.resize ? { width: Math.max(.01,bounds.width+dx), height: Math.max(.01,bounds.height+dy) } : null;
+        if (target && ["math","image"].includes(a.type)) target.height = target.width * bounds.height / Math.max(.001,bounds.width);
+        return moveOrResize(original,dx,dy,target);
+      });
+      annotationsRef.current = next; setAnnotations(next); return;
+    }
+
     if (currentDraft) {
       if (currentDraft.type === "pen" || currentDraft.type === "highlight") {
         const nextDraft = {
           ...currentDraft,
           points: [...currentDraft.points, point],
         };
+        if (draftAdapter && currentDraft.type === "compass") nextDraft.height = Math.sign(nextDraft.height || 1) * Math.abs(nextDraft.width * targetSize.width / targetSize.height);
         currentDraftRef.current = nextDraft;
         setDraft(nextDraft);
       } else {
@@ -933,6 +1070,7 @@ export default function PdfEditorLayer({
   }
 
   function finishAnnotation() {
+    if (draftAdapter && dragRef.current) setSelectionBox(null);
     if (isErasingRef.current) {
       isErasingRef.current = false;
       erasedDuringStrokeRef.current = new Set();
@@ -965,7 +1103,7 @@ export default function PdfEditorLayer({
   }
 
   function beginMove(event, annotation) {
-    if (tool !== "select") return;
+    if (tool !== "select" && !(draftAdapter && tool === "highlight-select" && annotation.type === "highlight")) return;
     event.stopPropagation();
     event.preventDefault();
     event.currentTarget.setPointerCapture?.(event.pointerId);
@@ -975,8 +1113,15 @@ export default function PdfEditorLayer({
       width: Math.max(1, pageElement.clientWidth),
       height: Math.max(1, pageElement.clientHeight),
     };
+    if (draftAdapter && Number(pageElement.dataset.localPdfRotation) % 180) [pageSize.width, pageSize.height] = [pageSize.height, pageSize.width];
     const point = normalizePoint(getPointer(event, pageElement), pageSize);
     setSelectedId(annotation.id);
+    if (draftAdapter) {
+      const ids = event.shiftKey ? [...new Set([...selectedIds, annotation.id])] : selectedIds.includes(annotation.id) ? selectedIds : [annotation.id];
+      setSelectedIds(ids);
+      dragRef.current = { originals: annotationsRef.current.filter(a => ids.includes(a.id)), start: point, pageElement, pageSize, resize: event.target.dataset.resize === "true" };
+      return;
+    }
     if (annotation.type === "pen" || annotation.type === "highlight") return;
     dragRef.current = {
       id: annotation.id,
@@ -1019,6 +1164,7 @@ export default function PdfEditorLayer({
       onExportBlocked();
       return;
     }
+    if (draftAdapter) { await draftAdapter.export(); return; }
     setExportError("");
     setIsExporting(true);
 
@@ -1106,7 +1252,7 @@ export default function PdfEditorLayer({
 
   const visibleAnnotations = draft ? [...annotations, draft] : annotations;
   const isCreatingAnnotation =
-    tool === "pen" || tool === "highlight" || tool === "shape" || tool === "text";
+    tool === "pen" || tool === "highlight" || tool === "shape" || tool === "text" || (draftAdapter && tool !== "native");
 
   function renderPageOverlay(pageElement) {
     const pageNumber = pageNumberFromLayer(pageElement);
@@ -1114,6 +1260,16 @@ export default function PdfEditorLayer({
       width: Math.max(1, pageElement.clientWidth),
       height: Math.max(1, pageElement.clientHeight),
     };
+    const pageMeta = draftAdapter?.page(pageNumber);
+    let rotation = 0;
+    let scale = 1;
+    if (pageMeta) {
+      rotation = pageMeta.rotation;
+      pageElement.dataset.localPdfRotation = String(rotation);
+      scale = pageSize.width / (rotation % 180 ? pageMeta.height : pageMeta.width);
+      pageSize.width = pageMeta.width * scale;
+      pageSize.height = pageMeta.height * scale;
+    }
     const pageAnnotations = visibleAnnotations.filter(
       (annotation) => Number(annotation.pageNumber || annotation.page || 1) === pageNumber
     );
@@ -1125,6 +1281,8 @@ export default function PdfEditorLayer({
         style={{
           pointerEvents: isCreatingAnnotation || tool === "eraser" ? "auto" : "none",
           cursor: tool === "pen" ? PEN_CURSOR : undefined,
+          touchAction: draftAdapter && extended.touch && tool !== "native" ? "none" : undefined,
+          ...(pageMeta ? { width: pageSize.width, height: pageSize.height, transformOrigin: "0 0", transform: rotation === 90 ? `translateX(${pageSize.height}px) rotate(90deg)` : rotation === 180 ? `translate(${pageSize.width}px, ${pageSize.height}px) rotate(180deg)` : rotation === 270 ? `translateY(${pageSize.width}px) rotate(270deg)` : undefined } : {}),
         }}
         onPointerDown={(event) => beginAnnotation(event, pageNumber, pageElement, pageSize)}
         onPointerMove={(event) => {
@@ -1144,6 +1302,15 @@ export default function PdfEditorLayer({
       >
         <svg className="pointer-events-none absolute inset-0 h-full w-full overflow-visible">
           {pageAnnotations.map((annotation) => {
+            if (draftAdapter) {
+              const selectable = tool === "select" || (tool === "highlight-select" && annotation.type === "highlight");
+              const b = annotationBounds(annotation);
+              return <g key={annotation.id} onPointerDown={event => beginMove(event,annotation)} onDoubleClick={() => { if (annotation.type === "text") { setTool("text"); setSelectedId(annotation.id); } if (annotation.type === "math") { setTool("math"); setSelectedId(annotation.id); setExtended(current => ({ ...current, asset: annotation })); setActiveFlyout("math"); } }} style={{ pointerEvents: selectable ? "auto" : "none" }}>
+                <g transform={`scale(${scale})`} dangerouslySetInnerHTML={{ __html: draftAdapter.artwork(annotation,pageMeta.width,pageMeta.height) }} />
+                {selectable && <rect x={b.x*pageSize.width} y={b.y*pageSize.height} width={Math.max(8,b.width*pageSize.width)} height={Math.max(8,b.height*pageSize.height)} fill="transparent" stroke={selectedIds.includes(annotation.id) ? "#06b6d4" : "none"} strokeDasharray="4 3"/>}
+                {selectable && selectedIds.includes(annotation.id) && <rect data-resize="true" x={(b.x+b.width)*pageSize.width-5} y={(b.y+b.height)*pageSize.height-5} width="10" height="10" fill="#06b6d4" style={{ cursor:"nwse-resize" }}/>}
+              </g>;
+            }
             if (annotation.type === "pen" || annotation.type === "highlight") {
               return (
                 <path
@@ -1152,7 +1319,7 @@ export default function PdfEditorLayer({
                   d={pathFromPoints(annotation.points, pageSize)}
                   fill="none"
                   stroke={annotation.color}
-                  strokeWidth={annotation.strokeWidth}
+                  strokeWidth={annotation.strokeWidth * scale}
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   opacity={annotation.opacity}
@@ -1166,6 +1333,7 @@ export default function PdfEditorLayer({
             return renderShape(annotation, pageSize, annotation.id === draft?.id);
           })}
         </svg>
+        {selectionBox?.pageNumber === pageNumber && <div className="pointer-events-none absolute border border-cyan-500 bg-cyan-300/10" style={{ left: selectionBox.x*pageSize.width,top:selectionBox.y*pageSize.height,width:selectionBox.width*pageSize.width,height:selectionBox.height*pageSize.height }} />}
 
         {tool === "eraser" && eraserCursor?.pageNumber === pageNumber && (
           <div
@@ -1180,7 +1348,7 @@ export default function PdfEditorLayer({
         )}
 
         {pageAnnotations
-          .filter((annotation) => annotation.type === "text")
+          .filter((annotation) => annotation.type === "text" && (!draftAdapter || (selectedId === annotation.id && tool === "text")))
           .map((annotation) => {
             const point = denormalizePoint(annotation, pageSize);
             const isSelected = selectedId === annotation.id;
@@ -1251,7 +1419,8 @@ export default function PdfEditorLayer({
                     width: Math.max(140, annotation.width * pageSize.width),
                     height: Math.max(46, annotation.height * pageSize.height),
                     color: annotation.color,
-                    fontSize: annotation.fontSize,
+                    fontSize: annotation.fontSize * scale,
+                    ...(draftAdapter ? { fontFamily: annotation.fontFamily || "Arial", fontWeight: annotation.bold ? "bold" : "normal", fontStyle: annotation.italic ? "italic" : "normal", textAlign: annotation.align || "left", lineHeight: 1.25, background: annotation.background || "transparent", opacity: annotation.opacity ?? 1, padding: `${4*scale}px ${6*scale}px` } : {}),
                     overflow: "auto",
                   }}
                 />
@@ -1272,9 +1441,10 @@ export default function PdfEditorLayer({
         </Fragment>
       ))}
 
-      <div className="pointer-events-none fixed inset-x-0 bottom-6 z-[9999] flex justify-center px-4">
-        <div className="pointer-events-auto relative rounded-[1.5rem] border border-white/10 bg-[#050816]/94 p-2 shadow-2xl shadow-cyan-950/30 backdrop-blur-xl">
-          {activeFlyout && (
+      <div className={draftAdapter ? "local-pdf-toolrail pointer-events-none fixed z-[9999]" : "pointer-events-none fixed inset-x-0 bottom-6 z-[9999] flex justify-center px-4"}>
+        <div className={draftAdapter ? "local-pdf-toolrail-inner pointer-events-auto" : "pointer-events-auto relative rounded-[1.5rem] border border-white/10 bg-[#050816]/94 p-2 shadow-2xl shadow-cyan-950/30 backdrop-blur-xl"}>
+          {draftAdapter && activeFlyout && draftAdapter.controls({ tool, selectTool: chooseTool, extended, setExtended, strokeColor, setStrokeColor, strokeWidth, setStrokeWidth, textColor, setTextColor, fontSize, setFontSize, shapeType, setShapeType, highlightColor, setHighlightColor, eraserSize, setEraserSize, selected: annotations.find(a => a.id === selectedId), updateSelected: changes => commitAnnotations(current => current.map(a=>a.id===selectedId ? {...a,...changes} : a)), clear: scope => { if (window.confirm(`Clear annotations on ${scope === "page" ? "this page" : "all pages"}?`)) commitAnnotations(current => scope === "page" ? current.filter(a=>a.pageNumber!==currentVisiblePage()) : []); }, close:()=>setActiveFlyout(null) })}
+          {!draftAdapter && activeFlyout && (
             <div className="absolute bottom-full left-1/2 mb-3 min-w-64 -translate-x-1/2 rounded-2xl border border-white/10 bg-[#050816]/96 p-3 text-white shadow-2xl backdrop-blur-xl">
               <p className="mb-3 text-xs font-black uppercase tracking-[0.22em] text-white/45">
                 {activeFlyout}
@@ -1403,16 +1573,17 @@ export default function PdfEditorLayer({
             </div>
           )}
 
-          <div className="flex items-center gap-1.5">
-            {editorTools.map(({ id, label, icon: Icon }) => (
+          <div className={draftAdapter ? "local-pdf-tool-list" : "flex items-center gap-1.5"}>
+            {(draftAdapter?.tools?.filter(item => !["highlight-select", "native", "hand", "protractor", "compass", "calculator", "settings"].includes(item.id)) || editorTools).map(({ id, label, icon: Icon }) => (
               <button
                 key={id}
                 type="button"
                 title={label}
                 aria-label={label}
+                aria-pressed={tool === id || !!(draftAdapter && ((id === "select" && ["highlight-select", "native", "hand"].includes(tool)) || (id === "ruler" && ["protractor", "compass"].includes(tool))))}
                 onClick={() => chooseTool(id)}
-                className={`flex h-11 w-11 items-center justify-center rounded-xl transition-all duration-200 ease-out hover:-translate-y-0.5 ${
-                  tool === id
+                className={`local-pdf-tool-button flex h-11 w-11 items-center justify-center rounded-xl transition-all duration-200 ease-out hover:-translate-y-0.5 ${
+                  tool === id || (draftAdapter && ((id === "select" && ["highlight-select", "native", "hand"].includes(tool)) || (id === "ruler" && ["protractor", "compass"].includes(tool))))
                     ? "bg-cyan-300 text-slate-950 shadow-[0_0_22px_rgba(34,211,238,0.22)]"
                     : "bg-transparent text-white/68 hover:bg-white/[0.08] hover:text-white"
                 }`}
@@ -1421,9 +1592,16 @@ export default function PdfEditorLayer({
               </button>
             ))}
 
-            <div className="mx-1 h-7 w-px bg-white/10" />
+            {draftAdapter && <div className="local-pdf-tool-separator" aria-hidden="true" />}
 
-            <button
+            {draftAdapter && <button type="button" title="Undo annotation" aria-label="Undo annotation" onClick={undo} className="local-pdf-tool-button flex items-center justify-center rounded-xl text-white/70 hover:bg-white/[0.08]"><Undo2 size={19}/></button>}
+            {draftAdapter && <button type="button" title="Redo annotation" aria-label="Redo annotation" onClick={redo} className="local-pdf-tool-button flex items-center justify-center rounded-xl text-white/70 hover:bg-white/[0.08]"><Redo2 size={19}/></button>}
+            {draftAdapter && <div className="local-pdf-tool-separator" aria-hidden="true" />}
+            {draftAdapter?.tools?.filter(item => ["calculator", "settings"].includes(item.id)).map(({ id, label, icon: Icon }) => <button key={id} type="button" title={label} aria-label={label} aria-pressed={tool === id} onClick={() => chooseTool(id)} className={`local-pdf-tool-button flex items-center justify-center rounded-xl ${tool === id ? "bg-cyan-300 text-slate-950" : "text-white/70 hover:bg-white/[0.08]"}`}><Icon size={19}/></button>)}
+
+            {!draftAdapter && <div className="mx-1 h-7 w-px bg-white/10" />}
+
+            {!draftAdapter && <button
               type="button"
               title="Undo"
               aria-label="Undo"
@@ -1431,8 +1609,8 @@ export default function PdfEditorLayer({
               className="flex h-11 w-11 items-center justify-center rounded-xl bg-transparent text-white/68 transition hover:bg-white/[0.08] hover:text-white"
             >
               <Undo2 size={19} />
-            </button>
-            <button
+            </button>}
+            {!draftAdapter && <button
               type="button"
               title="Redo"
               aria-label="Redo"
@@ -1440,11 +1618,11 @@ export default function PdfEditorLayer({
               className="flex h-11 w-11 items-center justify-center rounded-xl bg-transparent text-white/68 transition hover:bg-white/[0.08] hover:text-white"
             >
               <Redo2 size={19} />
-            </button>
+            </button>}
 
-            <div className="mx-1 h-7 w-px bg-white/10" />
+            {!draftAdapter && <div className="mx-1 h-7 w-px bg-white/10" />}
 
-            <button
+            {!draftAdapter && <button
               type="button"
               title={isExporting ? "Exporting..." : "Export PDF"}
               aria-label="Export PDF"
@@ -1453,12 +1631,17 @@ export default function PdfEditorLayer({
               className="flex h-11 w-11 items-center justify-center rounded-xl bg-cyan-300 text-slate-950 transition hover:bg-cyan-200 disabled:cursor-wait disabled:opacity-70"
             >
               <FileDown size={19} />
-            </button>
+            </button>}
           </div>
         </div>
       </div>
 
-      <div className="absolute bottom-4 left-4 z-[9998] flex items-center gap-2 rounded-full border border-white/10 bg-slate-950/88 px-3 py-1.5 text-xs font-bold text-white/65 backdrop-blur">
+      {draftAdapter?.mobileActionsHost && createPortal(<>
+        <button type="button" onClick={undo}><Undo2 size={17} />Undo annotation</button>
+        <button type="button" onClick={redo}><Redo2 size={17} />Redo annotation</button>
+      </>, draftAdapter.mobileActionsHost)}
+
+      {!draftAdapter && <div className="absolute bottom-4 left-4 z-[9998] flex items-center gap-2 rounded-full border border-white/10 bg-slate-950/88 px-3 py-1.5 text-xs font-bold text-white/65 backdrop-blur">
         <span>{isExporting ? "Exporting..." : exportError || saveStatus}</span>
         <span className="h-3 w-px bg-white/15" />
         <button
@@ -1468,7 +1651,7 @@ export default function PdfEditorLayer({
         >
           Reset paper
         </button>
-      </div>
+      </div>}
     </>
   );
 }

@@ -4,8 +4,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { resolveTurnstileSiteKey } from "../src/lib/turnstile.js";
 
-test("development fallback and production fail-closed configuration", () => {
-  assert.equal(resolveTurnstileSiteKey(undefined, true), "1x00000000000000000000AA");
+test("development requires explicit key and production rejects test keys", () => {
+  assert.equal(resolveTurnstileSiteKey(undefined, true), "");
+  assert.equal(resolveTurnstileSiteKey(" real-configured-site-key ", true), "real-configured-site-key");
   assert.equal(resolveTurnstileSiteKey("  ", false), "");
   assert.equal(resolveTurnstileSiteKey("1x00000000000000000000AA", false), "");
   assert.equal(resolveTurnstileSiteKey(" real-configured-site-key ", false), "real-configured-site-key");
