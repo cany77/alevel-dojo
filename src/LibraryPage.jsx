@@ -123,6 +123,7 @@ function unique(values) {
 }
 
 function paperId(paper) {
+  if (paper.progressIdentity) return paper.progressIdentity;
   return [paper.type, paper.board, paper.subject, paper.variant, paper.qualification, paper.session, paper.year, paper.unit, paper.topic, paper.questionPaper, paper.pdf]
     .filter(Boolean)
     .join("|");

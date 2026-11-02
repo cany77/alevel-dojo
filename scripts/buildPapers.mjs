@@ -4,9 +4,9 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
-const publicDir = path.join(rootDir, "public");
+const publicDir = process.env.PAPER_BUILD_PUBLIC_DIR ? path.resolve(process.env.PAPER_BUILD_PUBLIC_DIR) : path.join(rootDir, "public");
 const papersRoot = path.join(publicDir, "papers");
-const outputFile = path.join(rootDir, "src", "papersData.js");
+const outputFile = process.env.PAPER_BUILD_OUTPUT_FILE ? path.resolve(process.env.PAPER_BUILD_OUTPUT_FILE) : path.join(rootDir, "src", "papersData.js");
 const supportedExtensions = new Set([".pdf", ".html", ".htm"]);
 
 const edexcelSubjects = {
@@ -386,7 +386,9 @@ function processEdexcel({ groups, filePath, parts, board, subject }) {
   const unitFolder = parts[sessionInfo.index - 1] || "";
   const fileName = path.basename(filePath);
   const unit = normalizeUnit(unitFolder, fileName);
-  const key = [board, subject, "IAL", sessionInfo.month, sessionInfo.year, unit].join("|");
+  const variantFolder = parts.slice(sessionInfo.index + 1, -1).find((part) => /^variant [AR]$/i.test(part)) || "";
+  const variant = variantFolder ? variantFolder.slice(-1).toUpperCase() : "";
+  const key = [board, subject, "IAL", sessionInfo.month, sessionInfo.year, unit, variant].join("|");
   const group = createPastPaperGroup(groups, key, {
     board,
     subject,
@@ -395,8 +397,25 @@ function processEdexcel({ groups, filePath, parts, board, subject }) {
     month: sessionInfo.month,
     session: sessionInfo.session,
     unit,
+    ...(variant ? { variant } : {}),
   });
   attachFile(group, filePath);
+}
+
+async function findRestrictedOxfordAqaFiles(dir) {
+  let entries;
+  try { entries = await fs.readdir(dir, { withFileTypes: true }); }
+  catch { return []; }
+  const matches = [];
+  for (const entry of entries) {
+    const fullPath = path.join(dir, entry.name);
+    if (entry.isDirectory()) matches.push(...await findRestrictedOxfordAqaFiles(fullPath));
+    else {
+      const relative = path.relative(publicDir, fullPath).replaceAll("\\", "/");
+      if (/oxfordaqa/i.test(relative) && /june[ _-]*2026|2026[ _-]*june/i.test(relative)) matches.push(relative);
+    }
+  }
+  return matches;
 }
 
 function gcseSubjectAndQualification(parts) {
@@ -588,6 +607,8 @@ function processStandard({ groups, topicTests, filePath, parts, board, subject }
 }
 
 async function main() {
+  const restricted = await findRestrictedOxfordAqaFiles(publicDir);
+  if (restricted.length) throw new Error(`OxfordAQA June 2026 files must not be published from public/: ${restricted.slice(0, 5).join(", ")}`);
   const files = await walk(papersRoot);
   const pastPaperGroups = {};
   const topicTests = [];
@@ -648,7 +669,12 @@ async function main() {
       if (unitCompare) return unitCompare;
       return Number(a.chapter || 0) - Number(b.chapter || 0) || String(a.title || "").localeCompare(String(b.title || ""));
     });
-  const allPapers = [...pastPapers, ...generatedTopicTests];
+  const overridesPath = path.join(rootDir, 'src', 'data', 'paperReleaseOverrides.json');
+  const overrides = JSON.parse(await fs.readFile(overridesPath, 'utf8').catch(error => { if (error.code === 'ENOENT') return '[]'; throw error; }));
+  const allPapers = [...pastPapers, ...generatedTopicTests].map(paper => {
+    const override = overrides.find(row => row.matchQuestionUrl === paper.questionPaper);
+    return override ? { ...paper, ...override.changes } : paper;
+  });
   const edexcelEntries = pastPapers.filter((paper) => paper.board === "Edexcel").length;
   const aLevelEntries = pastPapers.filter((paper) => paper.category !== "GCSE / IGCSE").length;
   const gcseEntries = pastPapers.filter((paper) => paper.category === "GCSE / IGCSE").length;
@@ -670,7 +696,7 @@ async function main() {
     console.warn(`Unpaired GCSE/IGCSE ${missing}: ${paper.board} ${paper.subject} ${paper.unit} ${paper.session}`);
   });
   if (unpaired.length > 25) console.warn(`...and ${unpaired.length - 25} more unpaired GCSE/IGCSE entries.`);
-  console.log("Saved to src/papersData.js");
+  console.log(`Saved to ${path.relative(rootDir, outputFile).replaceAll("\\", "/")}`);
 }
 
 main().catch((error) => {

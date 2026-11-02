@@ -4,6 +4,7 @@ import { gradeBoundaries as generatedGradeBoundaries } from "./data/gradeBoundar
 import { umsBoundaries } from "./data/umsBoundaries";
 import { supabase } from "./supabaseClient";
 import PdfViewer from "./PdfViewer";
+import SubjectPastPapersBrowser from "./SubjectPastPapersBrowser";
 import Watermark from "./Watermark";
 import usePersistentState from "./usePersistentState";
 import { annotationsFromPayload, cleanPdfExportFilename, exportAnnotatedPdf } from "./pdfExport";
@@ -316,6 +317,7 @@ const defaultDashboardState = {
 };
 
 function paperId(paper) {
+  if (paper.progressIdentity) return paper.progressIdentity;
   return [
     paper.type,
     paper.board,
@@ -5077,6 +5079,8 @@ function PastPapersLandingPage({
 function PastPapersPanel({
   subject,
   user,
+  profile,
+  onModePreferenceSaved = () => {},
   onRequireLogin,
   planAccess,
   onRecordUsage = async () => null,
@@ -5092,21 +5096,111 @@ function PastPapersPanel({
   const [showInsert, setShowInsert] = useState(false);
   const [maximizedPreview, setMaximizedPreview] = useState(false);
   const [paperSearch, setPaperSearch] = useState("");
+  const modeStorageKey = `alevel-dojo-subject-papers-mode:${user?.id || "guest"}`;
+  const [viewMode, setViewMode] = useState(() => readStorage(modeStorageKey, profile?.preferences?.subjectPastPapersMode || "browse"));
+  const [modeError, setModeError] = useState("");
+  const modeTouchedRef = useRef(false);
+  const modeDesiredRef = useRef(viewMode);
+  const modeSaveQueueRef = useRef(Promise.resolve());
   const [selectedQualification, setSelectedQualification] = useState("All qualifications");
-  const [selectedUnit, setSelectedUnit] = useState("All units");
+  const [selectedUnit, setSelectedUnit] = useState(() => sortUnits(unique(getSubjectPapers(subject).map((paper) => paper.unit)))[0] || "All units");
   const [selectedYear, setSelectedYear] = useState("All years");
   const [selectedSession, setSelectedSession] = useState("All sessions");
+  const [selectedVariant, setSelectedVariant] = useState("All variants");
   const [completionFilter, setCompletionFilter] = useState("All papers");
   const [annotationFilter, setAnnotationFilter] = useState("All markings");
   const [annotatedPaperIds, setAnnotatedPaperIds] = useState([]);
   const [exportingPaperId, setExportingPaperId] = useState("");
   const [exportError, setExportError] = useState("");
 
+  const savedStorageKey = `alevel-dojo-favourites:${user?.id || "guest"}`;
   const [savedPaperIds, setSavedPaperIds] = useState(() =>
-    readStorage("alevel-dojo-favourites", [])
+    readStorage(savedStorageKey, readStorage("alevel-dojo-favourites", []))
   );
+  const [pendingPaperIds, setPendingPaperIds] = useState([]);
+  const pendingPaperActionsRef = useRef(new Set());
+  const savedChangedRef = useRef(0);
+  const [paperActionError, setPaperActionError] = useState("");
 
   const subjectPastPapers = getSubjectPapers(subject);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    let cancelled = false;
+    const version = savedChangedRef.current;
+    supabase.from("saved_papers").select("paper_id").eq("user_id", user.id).then(async ({ data, error }) => {
+      if (cancelled) return;
+      if (error) {
+        setPaperActionError("Account sync is unavailable; saved papers are available on this device.");
+        return;
+      }
+      if (savedChangedRef.current !== version) return;
+      const remoteIds = (data || []).map((row) => row.paper_id);
+      const localIds = readStorage(savedStorageKey, null) ?? (remoteIds.length ? [] : readStorage("alevel-dojo-favourites", []));
+      const merged = unique([...remoteIds, ...localIds]);
+      setSavedPaperIds(merged);
+      writeStorage(savedStorageKey, merged);
+      writeStorage("alevel-dojo-favourites", merged);
+      const unsynced = localIds.filter((id) => !remoteIds.includes(id));
+      if (unsynced.length) {
+        const { error: syncError } = await supabase.from("saved_papers").upsert(unsynced.map((paper_id) => ({ user_id: user.id, paper_id })));
+        if (syncError && !cancelled) setPaperActionError("Some saved papers could not sync to your account.");
+      }
+    });
+    return () => { cancelled = true; };
+  }, [user?.id, savedStorageKey]);
+
+  useEffect(() => {
+    setSelectedUnit(sortUnits(unique(getSubjectPapers(subject).map((paper) => paper.unit)))[0] || "All units");
+    setSelectedYear("All years");
+    setSelectedSession("All sessions");
+    setSelectedVariant("All variants");
+    setSelectedQualification("All qualifications");
+    setCompletionFilter("All papers");
+    setAnnotationFilter("All markings");
+    setPaperSearch("");
+  }, [subject.id]);
+
+  useEffect(() => {
+    if (modeTouchedRef.current) return;
+    const accountMode = profile?.preferences?.subjectPastPapersMode;
+    const localMode = readStorage(modeStorageKey, null);
+    const next = accountMode === "download" || accountMode === "browse" ? accountMode : localMode === "download" ? "download" : "browse";
+    setViewMode(next);
+    modeDesiredRef.current = next;
+  }, [modeStorageKey, profile?.preferences?.subjectPastPapersMode]);
+
+  function changeViewMode(next) {
+    if (next === viewMode) return;
+    modeTouchedRef.current = true;
+    modeDesiredRef.current = next;
+    setViewMode(next);
+    setModeError("");
+    writeStorage(modeStorageKey, next);
+    if (!user?.id) return;
+    modeSaveQueueRef.current = modeSaveQueueRef.current.catch(() => {}).then(async () => {
+      const savingMode = modeDesiredRef.current;
+      const { data, error: readError } = await supabase.from("profiles").select("preferences").eq("id", user.id).maybeSingle();
+      if (readError) throw readError;
+      if (modeDesiredRef.current !== savingMode) return;
+      const preferences = { ...(data?.preferences || {}), subjectPastPapersMode: savingMode };
+      const { error: saveError } = await supabase.from("profiles").update({ preferences }).eq("id", user.id);
+      if (saveError) throw saveError;
+      onModePreferenceSaved(savingMode);
+    }).catch(() => setModeError("Viewing mode saved on this device, but could not sync to your account."));
+  }
+
+  function beginPaperAction(key) {
+    if (pendingPaperActionsRef.current.has(key)) return false;
+    pendingPaperActionsRef.current.add(key);
+    setPendingPaperIds(Array.from(pendingPaperActionsRef.current));
+    return true;
+  }
+
+  function endPaperAction(key) {
+    pendingPaperActionsRef.current.delete(key);
+    setPendingPaperIds(Array.from(pendingPaperActionsRef.current));
+  }
 
   function hasSavedAnnotations(payload) {
     if (!payload?.pages || typeof payload.pages !== "object") return false;
@@ -5274,12 +5368,17 @@ function PastPapersPanel({
     ...sortSessions(unique(subjectPastPapers.map((paper) => paper.session))),
   ];
 
+  const availableVariants = [
+    "All variants",
+    ...unique(subjectPastPapers.map((paper) => paper.variant).filter(Boolean)).sort(),
+  ];
+
   const filteredPapers = subjectPastPapers.filter((paper) => {
     const id = paperId(paper);
     const isCompleted = completedPaperIds.includes(id);
     const isAnnotated = annotatedPaperIds.includes(id);
 
-    const text = `${paper.board} ${paper.subject} ${paper.variant || ""} ${
+    const text = `${paper.board} ${paper.subject} ${paper.variant || ""} ${paper.componentCode || ""} ${paper.paper || ""} ${
       paper.qualification || ""
     } ${paper.session || ""} ${paper.year || ""} ${paper.unit || ""}`.toLowerCase();
 
@@ -5290,6 +5389,7 @@ function PastPapersPanel({
       (selectedUnit === "All units" || paper.unit === selectedUnit) &&
       (selectedYear === "All years" || String(paper.year) === String(selectedYear)) &&
       (selectedSession === "All sessions" || paper.session === selectedSession) &&
+      (selectedVariant === "All variants" || paper.variant === selectedVariant) &&
       (completionFilter === "All papers" ||
         (completionFilter === "Complete" && isCompleted) ||
         (completionFilter === "Incomplete" && !isCompleted)) &&
@@ -5312,6 +5412,8 @@ function PastPapersPanel({
     }
   async function toggleCompleted(paper) {
     const id = paperId(paper);
+    if (!beginPaperAction(id)) return;
+    setPaperActionError("");
     const exists = completedPaperIds.includes(id);
 
     const next = exists
@@ -5321,20 +5423,18 @@ function PastPapersPanel({
     onCompletedPaperIdsChange(next);
     writeStorage("alevel-dojo-completed-papers", next);
 
-    if (!user) return;
-
-    if (exists) {
-      await supabase
-        .from("completed_papers")
-        .delete()
-        .eq("user_id", user.id)
-        .eq("paper_id", id);
-    } else {
-      await supabase.from("completed_papers").insert({
-        user_id: user.id,
-        paper_id: id,
-      });
-      onAwardXP("complete_paper", 50, { key: `paper-${id}`, paperId: id, subject: paper.subject, board: paper.board });
+    try {
+      const { error } = exists
+        ? await supabase.from("completed_papers").delete().eq("user_id", user.id).eq("paper_id", id)
+        : await supabase.from("completed_papers").insert({ user_id: user.id, paper_id: id });
+      if (error) throw error;
+      if (!exists) onAwardXP("complete_paper", 50, { key: `paper-${id}`, paperId: id, subject: paper.subject, board: paper.board });
+    } catch {
+      onCompletedPaperIdsChange(completedPaperIds);
+      writeStorage("alevel-dojo-completed-papers", completedPaperIds);
+      setPaperActionError("Could not update completion. Please try again.");
+    } finally {
+      endPaperAction(id);
     }
   }
 
@@ -5366,12 +5466,15 @@ function PastPapersPanel({
     onOpenPaywall(messages[kind] || messages.export);
   }
 
-  function toggleSaved(paper) {
+  async function toggleSaved(paper) {
     const id = paperId(paper);
+    if (!beginPaperAction(id)) return;
+    setPaperActionError("");
     const isAlreadySaved = savedPaperIds.includes(id);
 
     if (!isAlreadySaved && !planAccess?.isPaid && savedPaperIds.length >= FREE_LIMITS.savedPapersTotal) {
       showPaperPaywall("save");
+      endPaperAction(id);
       return;
     }
 
@@ -5380,7 +5483,19 @@ function PastPapersPanel({
       : [...savedPaperIds, id];
 
     setSavedPaperIds(next);
+    savedChangedRef.current += 1;
+    writeStorage(savedStorageKey, next);
     writeStorage("alevel-dojo-favourites", next);
+    try {
+      const { error } = isAlreadySaved
+        ? await supabase.from("saved_papers").delete().eq("user_id", user.id).eq("paper_id", id)
+        : await supabase.from("saved_papers").upsert({ user_id: user.id, paper_id: id });
+      if (error) throw error;
+    } catch {
+      setPaperActionError("Saved on this device, but could not sync to your account.");
+    } finally {
+      endPaperAction(id);
+    }
   }
 
   async function loadSavedPaperAnnotations(id) {
@@ -5472,13 +5587,14 @@ function PastPapersPanel({
     setSelectedUnit("All units");
     setSelectedYear("All years");
     setSelectedSession("All sessions");
+    setSelectedVariant("All variants");
     setCompletionFilter("All papers");
     setAnnotationFilter("All markings");
   }
 
   return (
-    <div className="mt-5">
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+    <div className="mt-2">
+      {activePreview && <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h3 className="text-xl font-black text-white">Past papers</h3>
           <p className="mt-1 text-sm text-white/40">
@@ -5497,7 +5613,7 @@ function PastPapersPanel({
             Close preview
           </button>
         )}
-      </div>
+      </div>}
 
       {activePreview ? (
         <div
@@ -5657,246 +5773,60 @@ function PastPapersPanel({
         </div>
       ) : (
         <>
-          <div className="mb-5 rounded-3xl border border-white/10 bg-slate-950/55 p-4">
-            <input
-              value={paperSearch}
-              onChange={(event) => setPaperSearch(event.target.value)}
-              placeholder="Search papers by unit, year, month, variant..."
-              className="mb-3 w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-4 text-white outline-none placeholder:text-white/35 focus:border-cyan-300"
-            />
-
-            <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-7">
-              <select
-                value={selectedQualification}
-                onChange={(event) => setSelectedQualification(event.target.value)}
-                className="rounded-xl border border-white/10 bg-slate-950 px-3 py-3 text-sm text-white outline-none focus:border-cyan-300"
-              >
-                {availableQualifications.map((item) => (
-                  <option key={item}>{item}</option>
-                ))}
-              </select>
-
-              <select
-                value={selectedUnit}
-                onChange={(event) => setSelectedUnit(event.target.value)}
-                className="rounded-xl border border-white/10 bg-slate-950 px-3 py-3 text-sm text-white outline-none focus:border-cyan-300"
-              >
-                {availableUnits.map((item) => (
-                  <option key={item}>{item}</option>
-                ))}
-              </select>
-
-              <select
-                value={selectedYear}
-                onChange={(event) => setSelectedYear(event.target.value)}
-                className="rounded-xl border border-white/10 bg-slate-950 px-3 py-3 text-sm text-white outline-none focus:border-cyan-300"
-              >
-                {availableYears.map((item) => (
-                  <option key={item}>{item}</option>
-                ))}
-              </select>
-
-              <select
-                value={selectedSession}
-                onChange={(event) => setSelectedSession(event.target.value)}
-                className="rounded-xl border border-white/10 bg-slate-950 px-3 py-3 text-sm text-white outline-none focus:border-cyan-300"
-              >
-                {availableSessions.map((item) => (
-                  <option key={item}>{item}</option>
-                ))}
-              </select>
-
-              <select
-                value={completionFilter}
-                onChange={(event) => setCompletionFilter(event.target.value)}
-                className="rounded-xl border border-white/10 bg-slate-950 px-3 py-3 text-sm text-white outline-none focus:border-cyan-300"
-              >
-                <option>All papers</option>
-                <option>Complete</option>
-                <option>Incomplete</option>
-              </select>
-
-              <select
-                value={annotationFilter}
-                onChange={(event) => setAnnotationFilter(event.target.value)}
-                className="rounded-xl border border-white/10 bg-slate-950 px-3 py-3 text-sm text-white outline-none focus:border-cyan-300"
-              >
-                <option>All markings</option>
-                <option>Marked papers</option>
-                <option>Unmarked papers</option>
-              </select>
-
-              <button
-                onClick={clearFilters}
-                className="rounded-xl bg-white px-4 py-3 text-sm font-black text-slate-950"
-              >
-                Clear
-              </button>
-            </div>
-          </div>
-
-          {exportError && (
-            <div className="mb-4 rounded-2xl border border-rose-400/20 bg-rose-500/10 px-4 py-3 text-sm font-bold text-rose-100">
-              {exportError}
+          {(modeError || paperActionError || exportError) && (
+            <div role="alert" className="mb-3 rounded-xl border border-rose-400/20 bg-rose-500/10 px-4 py-2 text-sm text-rose-100">
+              {modeError || paperActionError || exportError}
             </div>
           )}
-
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-            {filteredPapers.length === 0 ? (
-              <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-6 text-white/45 md:col-span-2 xl:col-span-3 2xl:col-span-4">
-                No past papers found for this search.
-              </div>
-            ) : (
-              filteredPapers.map((paper) => {
-                const id = paperId(paper);
-                const isCompleted = completedPaperIds.includes(id);
-                const isSaved = savedPaperIds.includes(id);
-                const isAnnotated = annotatedPaperIds.includes(id);
-                const paperInsert = getPaperInsert(paper, subject);
-
-                return (
-                  <article
-                    key={id}
-                    className="relative flex min-h-[260px] flex-col justify-between overflow-hidden rounded-2xl border border-white/10 bg-slate-950/40 p-4 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:border-cyan-300/25 hover:bg-white/[0.055] hover:shadow-[0_0_24px_rgba(34,211,238,0.08)]"
-                  >
-                    <FileText
-                      className="pointer-events-none absolute -right-3 top-3 text-cyan-200/[0.07]"
-                      size={82}
-                    />
-                    <div className="relative z-10">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <h4 className="font-black text-white">
-                            {paperCardTitle(paper, paper.unit)} - {paperSessionLabel(paper)}
-                          </h4>
-
-                          {isAnnotated && (
-                            <span className="inline-flex items-center gap-1 rounded-full border border-cyan-300/20 bg-cyan-300/10 px-2 py-0.5 text-[11px] font-black uppercase tracking-[0.12em] text-cyan-100">
-                              <Edit3 size={11} />
-                              Marked
-                            </span>
-                          )}
-
-                          {paperInsert && (
-                            <span className="inline-flex items-center gap-1 rounded-full border border-violet-300/20 bg-violet-300/10 px-2 py-0.5 text-[11px] font-black uppercase tracking-[0.12em] text-violet-100">
-                              <FileText size={11} />
-                              {paperInsert.label}
-                            </span>
-                          )}
-                        </div>
-
-                        <p className="mt-1 text-sm text-white/40">
-                          {paper.board} • {paper.subject}
-                        </p>
-                      </div>
-
-                      <div className="flex flex-wrap gap-2">
-                        <button
-                          onClick={() =>
-                            requireLogin(() => {
-                                toggleCompleted(paper);
-                            })
-                            }
-                          className={`rounded-xl px-4 py-2 text-sm font-black ${
-                            isCompleted
-                              ? "bg-green-300 text-slate-950"
-                              : "bg-white/[0.08] text-white/75 hover:bg-white/[0.12]"
-                          }`}
-                        >
-                          {isCompleted ? "✓ Complete" : "Mark complete"}
-                        </button>
-
-                        <button
-                          onClick={() =>
-                            requireLogin(() => {
-                                toggleSaved(paper);
-                            })
-                            }
-                          className={`rounded-xl px-4 py-2 text-sm font-black ${
-                            isSaved
-                              ? "bg-yellow-300 text-slate-950"
-                              : "bg-white/[0.08] text-white/75 hover:bg-white/[0.12]"
-                          }`}
-                        >
-                          {isSaved ? "★ Saved" : "☆ Save"}
-                        </button>
-                        {isCompleted && isPdfPaper(paper) && (
-                          <button
-                            onClick={() =>
-                              requireLogin(() => {
-                                exportCompletedPaper(paper);
-                              })
-                            }
-                            disabled={exportingPaperId === id}
-                            className="rounded-xl border border-cyan-300/25 bg-cyan-300/10 px-4 py-2 text-sm font-black text-cyan-100 hover:bg-cyan-300/15 disabled:cursor-wait disabled:opacity-70"
-                          >
-                            {exportingPaperId === id ? "Exporting..." : "Export PDF"}
-                          </button>
-                        )}
-                      </div>
-                    </div>
-
-                    </div>
-
-                    <div className="relative z-10 mt-4 flex flex-wrap items-center gap-2">
-                      <button
-                       onClick={() =>
-  requireLogin(() => {
-    if (isPdfPaper(paper)) {
-      openPaperEditWithLimit(paper);
-    } else {
-      openPaperFile(paper);
-    }
-  })
-}
-                        className="inline-flex items-center gap-2 rounded-xl bg-cyan-300 px-5 py-2.5 text-sm font-black text-slate-950 shadow-[0_0_22px_rgba(34,211,238,0.18)] transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-cyan-200"
-                      >
-                        {isPdfPaper(paper) ? <Edit3 size={16} /> : <Eye size={16} />}
-                        {isPdfPaper(paper) ? "PDF Edit" : "View Paper"}
-                      </button>
-
-                      {paper.questionPaper && (
-                        <button
-                          onClick={() =>
-                            requireLogin(() =>
-                              downloadPaperResource(
-                                paper,
-                                paper.questionPaper,
-                                USAGE_EVENT_TYPES.questionPaperDownload
-                              )
-                            )
-                          }
-                          className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2 text-sm font-black text-slate-950"
-                        >
-                          <Download size={16} />
-                          Download Q
-                        </button>
-                      )}
-
-                      {paper.markScheme && (
-                        <button
-                          onClick={() =>
-                            requireLogin(() =>
-                              downloadPaperResource(
-                                paper,
-                                paper.markScheme,
-                                USAGE_EVENT_TYPES.markSchemeDownload
-                              )
-                            )
-                          }
-                          className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2 text-sm font-black text-slate-950"
-                        >
-                          <Download size={16} />
-                          Download MS
-                        </button>
-                      )}
-                    </div>
-                  </article>
-                );
-              })
-            )}
-          </div>
+          <SubjectPastPapersBrowser
+            subject={subject}
+            papers={filteredPapers}
+            units={availableUnits}
+            years={availableYears}
+            sessions={availableSessions}
+            selectedUnit={selectedUnit}
+            setSelectedUnit={setSelectedUnit}
+            selectedYear={selectedYear}
+            setSelectedYear={setSelectedYear}
+            selectedSession={selectedSession}
+            setSelectedSession={setSelectedSession}
+            advancedFiltersActive={selectedSession !== "All sessions" || selectedVariant !== "All variants" || selectedQualification !== "All qualifications" || completionFilter !== "All papers" || annotationFilter !== "All markings"}
+            mode={viewMode}
+            setMode={changeViewMode}
+            search={paperSearch}
+            setSearch={setPaperSearch}
+            getId={paperId}
+            savedIds={savedPaperIds}
+            completedIds={completedPaperIds}
+            annotatedIds={annotatedPaperIds}
+            pendingIds={pendingPaperIds}
+            exportingId={exportingPaperId}
+            onSave={(paper) => requireLogin(() => toggleSaved(paper))}
+            onComplete={(paper) => requireLogin(() => toggleCompleted(paper))}
+            onQuestion={(paper) => requireLogin(() => openPaperPreview(paper, "preview", false))}
+            onMarkScheme={(paper) => requireLogin(() => openPaperPreview(paper, "preview", true))}
+            onDownloadQ={(paper, url) => requireLogin(() => downloadPaperResource(paper, url, USAGE_EVENT_TYPES.questionPaperDownload))}
+            onDownloadMS={(paper, url) => requireLogin(() => downloadPaperResource(paper, url, USAGE_EVENT_TYPES.markSchemeDownload))}
+            onEdit={(paper) => requireLogin(() => isPdfPaper(paper) ? openPaperEditWithLimit(paper) : openPaperFile(paper))}
+            onExport={(paper) => requireLogin(() => exportCompletedPaper(paper))}
+            extraFilters={
+              <>
+                {availableVariants.length > 1 && <select aria-label="Paper variant" value={selectedVariant} onChange={(event) => setSelectedVariant(event.target.value)} className="h-9 min-w-0 rounded-lg border border-[#755783] bg-[#100e1b] px-2 text-xs text-white focus:border-[#43d9eb]">
+                  {availableVariants.map((item) => <option key={item} value={item}>{item}</option>)}
+                </select>}
+                <select aria-label="Qualification" value={selectedQualification} onChange={(event) => setSelectedQualification(event.target.value)} className="h-9 min-w-0 rounded-lg border border-[#755783] bg-[#100e1b] px-2 text-xs text-white focus:border-[#43d9eb]">
+                  {availableQualifications.map((item) => <option key={item}>{item}</option>)}
+                </select>
+                <select aria-label="Completion" value={completionFilter} onChange={(event) => setCompletionFilter(event.target.value)} className="h-9 min-w-0 rounded-lg border border-[#755783] bg-[#100e1b] px-2 text-xs text-white focus:border-[#43d9eb]">
+                  <option>All papers</option><option>Complete</option><option>Incomplete</option>
+                </select>
+                <select aria-label="Annotations" value={annotationFilter} onChange={(event) => setAnnotationFilter(event.target.value)} className="h-9 min-w-0 rounded-lg border border-[#755783] bg-[#100e1b] px-2 text-xs text-white focus:border-[#43d9eb]">
+                  <option>All markings</option><option>Marked papers</option><option>Unmarked papers</option>
+                </select>
+                <button type="button" onClick={clearFilters} className="h-9 rounded-lg border border-[#755783] px-3 text-xs text-white hover:bg-white/10">Clear filters</button>
+              </>
+            }
+          />
         </>
       )}
     </div>
@@ -6839,6 +6769,8 @@ function SubjectPagePreview({
   subject,
   onBack,
   user,
+  profile,
+  onModePreferenceSaved = () => {},
   onRequireLogin,
   onOpenPricing,
   paidAccess = false,
@@ -6884,7 +6816,13 @@ function SubjectPagePreview({
         Back to Home
       </button>
 
-      <div className="mb-5 rounded-3xl border border-white/10 bg-white/[0.04] p-6">
+      {section === "pastpapers" && (
+        <button type="button" onClick={() => changeSection("overview")} className="mb-2 ml-2 text-xs font-semibold text-cyan-200 hover:text-cyan-100">
+          Back to subject
+        </button>
+      )}
+
+      {section !== "pastpapers" && <><div className="mb-5 rounded-3xl border border-white/10 bg-white/[0.04] p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <span
@@ -6931,12 +6869,15 @@ function SubjectPagePreview({
             {title}
           </button>
         ))}
-      </div>
+      </div></>}
 
       {section === "pastpapers" ? (
         <PastPapersPanel
+            key={`${subject.id}:${user?.id || "guest"}`}
             subject={subject}
             user={user}
+            profile={profile}
+            onModePreferenceSaved={onModePreferenceSaved}
             onRequireLogin={onRequireLogin}
             planAccess={planAccess}
             onRecordUsage={onRecordUsage}
@@ -8061,6 +8002,8 @@ export default function Dashboard({
           {activeSubject ? (
             <SubjectPagePreview
               subject={activeSubject}
+              profile={dashboardProfile}
+              onModePreferenceSaved={(mode) => setDashboardProfile((current) => ({ ...current, preferences: { ...(current?.preferences || {}), subjectPastPapersMode: mode } }))}
               onBack={() => {
                 setActiveSubjectId(null);
                 setSubjectSection("overview");
